@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Ticket } from "@/types/ticket";
 import { getTicketById } from "@/data/mockTickets";
 import { AddTicketForm } from "@/components/AddTicketForm";
@@ -7,9 +7,18 @@ import { EmptyState } from "@/components/EmptyState";
 import { toast } from "@/hooks/use-toast";
 import { ClipboardList } from "lucide-react";
 
+const STORAGE_KEY = "glpi-tracker-tickets";
+
 const Index = () => {
-  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [tickets, setTickets] = useState<Ticket[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : [];
+  });
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets));
+  }, [tickets]);
 
   const handleAddTicket = async (ticketId: string) => {
     // Check if already tracking
