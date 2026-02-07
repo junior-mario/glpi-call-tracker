@@ -11,6 +11,7 @@ export interface GLPISessionResponse {
 export interface GLPITicketResponse {
   id: number;
   name: string;
+  content: string;
   status: number;
   priority: number;
   date_creation: string;
@@ -24,6 +25,35 @@ export interface GLPIFollowupResponse {
   content: string;
   date_creation: string;
   users_id: number;
+}
+
+export interface GLPISolutionResponse {
+  id: number;
+  content: string;
+  date_creation: string;
+  users_id: number;
+  status: number;
+}
+
+export interface GLPITaskResponse {
+  id: number;
+  content: string;
+  date_creation: string;
+  users_id: number;
+  state: number;
+  is_private: number;
+  actiontime: number;
+}
+
+export interface GLPIValidationResponse {
+  id: number;
+  comment_submission: string;
+  comment_validation: string;
+  date_creation: string;
+  date_mod: string;
+  users_id: number;
+  users_id_validate: number;
+  status: number;
 }
 
 export interface GLPIUserResponse {

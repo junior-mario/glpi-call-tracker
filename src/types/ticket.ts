@@ -5,7 +5,7 @@ export interface TicketUpdate {
   date: string;
   author: string;
   content: string;
-  type: 'comment' | 'status_change' | 'assignment' | 'solution';
+  type: 'comment' | 'status_change' | 'assignment' | 'solution' | 'task' | 'validation';
 }
 
 export interface Ticket {

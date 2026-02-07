@@ -1,5 +1,5 @@
 import { TicketUpdate } from "@/types/ticket";
-import { MessageSquare, RefreshCw, UserCheck, CheckCircle } from "lucide-react";
+import { MessageSquare, RefreshCw, UserCheck, CheckCircle, ClipboardList, ShieldCheck } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -8,6 +8,8 @@ const updateTypeIcons = {
   status_change: RefreshCw,
   assignment: UserCheck,
   solution: CheckCircle,
+  task: ClipboardList,
+  validation: ShieldCheck,
 };
 
 const updateTypeLabels = {
@@ -15,6 +17,8 @@ const updateTypeLabels = {
   status_change: "Mudança de Status",
   assignment: "Atribuição",
   solution: "Solução",
+  task: "Tarefa",
+  validation: "Validação",
 };
 
 interface TimelineProps {

@@ -81,10 +81,10 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
             id="baseUrl"
             placeholder="https://seu-servidor-glpi.com"
             value={config.baseUrl}
-            onChange={(e) => setConfig({ ...config, baseUrl: e.target.value.replace(/\/$/, '') })}
+            onChange={(e) => setConfig({ ...config, baseUrl: e.target.value.replace(/\/+$/, '').replace(/\/apirest\.php$/i, '') })}
           />
           <p className="text-xs text-muted-foreground">
-            URL do servidor GLPI sem barra no final (ex: https://glpi.empresa.com)
+            Apenas a URL do servidor GLPI, sem /apirest.php (ex: https://glpi.empresa.com)
           </p>
         </div>
 
