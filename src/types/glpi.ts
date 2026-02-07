@@ -56,6 +56,21 @@ export interface GLPIValidationResponse {
   status: number;
 }
 
+export interface GLPIDocumentItemResponse {
+  id: number;
+  documents_id: number;
+  date_creation: string;
+  users_id: number;
+}
+
+export interface GLPIDocumentResponse {
+  id: number;
+  name: string;
+  filename: string;
+  date_creation: string;
+  users_id: number;
+}
+
 export interface GLPIUserResponse {
   id: number;
   name: string;

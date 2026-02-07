@@ -1,4 +1,4 @@
-import { GLPIConfig, GLPISessionResponse, GLPITicketResponse, GLPIFollowupResponse, GLPISolutionResponse, GLPITaskResponse, GLPIValidationResponse, GLPIUserResponse, GLPITestResult } from "@/types/glpi";
+import { GLPIConfig, GLPISessionResponse, GLPITicketResponse, GLPIFollowupResponse, GLPISolutionResponse, GLPITaskResponse, GLPIValidationResponse, GLPIDocumentItemResponse, GLPIDocumentResponse, GLPIUserResponse, GLPITestResult } from "@/types/glpi";
 import { Ticket, TicketStatus, TicketUpdate } from "@/types/ticket";
 
 const CONFIG_KEY = "glpi-api-config";
@@ -29,12 +29,65 @@ function getApiBaseUrl(config: GLPIConfig): string {
   return normalizeBaseUrl(config.baseUrl);
 }
 
-// Extracts error message from GLPI API responses
-// GLPI returns errors as: ["ERROR_CODE", "description"] or {"0":"ERROR_CODE","1":"description"}
-// Decodes HTML entities and strips tags from GLPI rich-text content
+// Decodes HTML entities (&#60; -> <, &amp; -> &, etc.)
+// Uses textarea trick: setting innerHTML decodes entities, .value returns decoded text
+function decodeEntities(html: string): string {
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = html;
+  return textarea.value;
+}
+
+// Decodes HTML entities and strips ALL tags — used for plain-text fields (title)
 function stripHtml(html: string): string {
-  const doc = new DOMParser().parseFromString(html, "text/html");
+  const decoded = decodeEntities(html);
+  const doc = new DOMParser().parseFromString(decoded, "text/html");
   return doc.body.textContent?.trim() || "";
+}
+
+// Sanitizes HTML keeping only safe tags — used for rich-text content (timeline)
+const ALLOWED_TAGS = new Set([
+  "P", "BR", "STRONG", "B", "EM", "I", "A", "SPAN",
+  "UL", "OL", "LI", "DIV", "H1", "H2", "H3", "H4", "H5", "H6",
+  "TABLE", "THEAD", "TBODY", "TR", "TH", "TD", "IMG",
+]);
+const ALLOWED_ATTRS: Record<string, string[]> = {
+  A: ["href", "target", "rel"],
+  SPAN: ["style"],
+  IMG: ["src", "alt", "width", "height"],
+  TD: ["colspan", "rowspan"],
+  TH: ["colspan", "rowspan"],
+};
+
+function sanitizeNode(node: Node, out: HTMLElement): void {
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      out.appendChild(child.cloneNode(true));
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      const el = child as Element;
+      if (ALLOWED_TAGS.has(el.tagName)) {
+        const clean = document.createElement(el.tagName);
+        for (const attr of ALLOWED_ATTRS[el.tagName] || []) {
+          const val = el.getAttribute(attr);
+          if (val && !(attr === "href" && val.toLowerCase().trimStart().startsWith("javascript:"))) {
+            clean.setAttribute(attr, val);
+          }
+        }
+        if (el.tagName === "A") clean.setAttribute("target", "_blank");
+        sanitizeNode(el, clean);
+        out.appendChild(clean);
+      } else {
+        sanitizeNode(el, out);
+      }
+    }
+  }
+}
+
+function sanitizeHtml(html: string): string {
+  const decoded = decodeEntities(html);
+  const doc = new DOMParser().parseFromString(decoded, "text/html");
+  const container = document.createElement("div");
+  sanitizeNode(doc.body, container);
+  return container.innerHTML;
 }
 
 function parseGLPIError(data: unknown): string {
@@ -207,6 +260,34 @@ async function getTicketSubItems<T>(
   }
 }
 
+async function getDocument(
+  config: GLPIConfig,
+  sessionToken: string,
+  documentId: number
+): Promise<GLPIDocumentResponse | null> {
+  try {
+    const response = await fetch(
+      `${getApiBaseUrl(config)}/apirest.php/Document/${documentId}`,
+      {
+        method: "GET",
+        headers: {
+          "App-Token": config.appToken,
+          "Session-Token": sessionToken,
+        },
+      }
+    );
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function getFileExtension(filename: string): string {
+  const dot = filename.lastIndexOf(".");
+  return dot !== -1 ? filename.substring(dot) : filename;
+}
+
 export async function testGLPIConnection(config: GLPIConfig, testTicketId?: string): Promise<GLPITestResult> {
   try {
     const sessionToken = await initSession(config);
@@ -274,11 +355,12 @@ export async function fetchGLPITicket(ticketId: string): Promise<Ticket | null> 
     const ticketData: GLPITicketResponse = await ticketResponse.json();
 
     // Fetch all sub-items in parallel
-    const [followups, solutions, tasks, validations, assigneeUserId] = await Promise.all([
+    const [followups, solutions, tasks, validations, documentItems, assigneeUserId] = await Promise.all([
       getTicketSubItems<GLPIFollowupResponse>(config, sessionToken, ticketId, "ITILFollowup"),
       getTicketSubItems<GLPISolutionResponse>(config, sessionToken, ticketId, "ITILSolution"),
       getTicketSubItems<GLPITaskResponse>(config, sessionToken, ticketId, "TicketTask"),
       getTicketSubItems<GLPIValidationResponse>(config, sessionToken, ticketId, "TicketValidation"),
+      getTicketSubItems<GLPIDocumentItemResponse>(config, sessionToken, ticketId, "Document_Item"),
       getTicketAssignee(config, sessionToken, ticketId),
     ]);
 
@@ -298,7 +380,7 @@ export async function fetchGLPITicket(ticketId: string): Promise<Ticket | null> 
         id: `desc`,
         date: ticketData.date_creation,
         author: openerName,
-        content: stripHtml(ticketData.content),
+        content: sanitizeHtml(ticketData.content),
         type: "comment",
       });
     }
@@ -309,7 +391,7 @@ export async function fetchGLPITicket(ticketId: string): Promise<Ticket | null> 
         id: `followup-${f.id}`,
         date: f.date_creation,
         author: await resolveUser(f.users_id),
-        content: stripHtml(f.content),
+        content: sanitizeHtml(f.content),
         type: "comment",
       });
     }
@@ -320,7 +402,7 @@ export async function fetchGLPITicket(ticketId: string): Promise<Ticket | null> 
         id: `solution-${s.id}`,
         date: s.date_creation,
         author: await resolveUser(s.users_id),
-        content: stripHtml(s.content),
+        content: sanitizeHtml(s.content),
         type: "solution",
       });
     }
@@ -331,7 +413,7 @@ export async function fetchGLPITicket(ticketId: string): Promise<Ticket | null> 
         id: `task-${t.id}`,
         date: t.date_creation,
         author: await resolveUser(t.users_id),
-        content: stripHtml(t.content),
+        content: sanitizeHtml(t.content),
         type: "task",
       });
     }
@@ -341,8 +423,8 @@ export async function fetchGLPITicket(ticketId: string): Promise<Ticket | null> 
       const submitter = await resolveUser(v.users_id);
       const validator = await resolveUser(v.users_id_validate);
       const comment = v.comment_validation
-        ? stripHtml(v.comment_validation)
-        : stripHtml(v.comment_submission);
+        ? sanitizeHtml(v.comment_validation)
+        : sanitizeHtml(v.comment_submission);
       updates.push({
         id: `validation-${v.id}`,
         date: v.date_mod || v.date_creation,
@@ -350,6 +432,21 @@ export async function fetchGLPITicket(ticketId: string): Promise<Ticket | null> 
         content: comment || `Validação solicitada por ${submitter} para ${validator}`,
         type: "validation",
       });
+    }
+
+    // Attachments
+    for (const di of documentItems) {
+      const doc = await getDocument(config, sessionToken, di.documents_id);
+      if (doc) {
+        const ext = getFileExtension(doc.filename);
+        updates.push({
+          id: `doc-${di.id}`,
+          date: di.date_creation || doc.date_creation,
+          author: await resolveUser(di.users_id || doc.users_id),
+          content: `Anexo ${ext}`,
+          type: "attachment",
+        });
+      }
     }
 
     // Sort updates by date (newest first)
