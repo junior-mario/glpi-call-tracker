@@ -54,6 +54,7 @@ interface CachedFilters {
   dateFrom: string | null;
   dateTo: string | null;
   status: string;
+  priority: string;
 }
 
 function loadCachedFilters(): CachedFilters | null {
@@ -86,6 +87,7 @@ const Monitor = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [addingTicketId, setAddingTicketId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>(cached?.status ?? "all");
+  const [priorityFilter, setPriorityFilter] = useState<string>(cached?.priority ?? "all");
   const [trackedIds, setTrackedIds] = useState<Set<string>>(new Set());
   const [configLoaded, setConfigLoaded] = useState(false);
   const [hasConfig, setHasConfig] = useState(false);
@@ -97,8 +99,9 @@ const Monitor = () => {
       dateFrom: dateFrom ? dateFrom.toISOString() : null,
       dateTo: dateTo ? dateTo.toISOString() : null,
       status: statusFilter,
+      priority: priorityFilter,
     });
-  }, [selectedGroup, dateFrom, dateTo, statusFilter]);
+  }, [selectedGroup, dateFrom, dateTo, statusFilter, priorityFilter]);
 
   // Load tracked IDs from Supabase
   useEffect(() => {
@@ -223,13 +226,14 @@ const Monitor = () => {
     }
   };
 
-  const filteredTickets = statusFilter === "all"
-    ? tickets
-    : tickets.filter((t) => {
-        const filterNum = Number(statusFilter);
-        if (filterNum === 3) return t.status === 3 || t.status === 4;
-        return t.status === filterNum;
-      });
+  const filteredTickets = tickets.filter((t) => {
+    if (statusFilter !== "all") {
+      const filterNum = Number(statusFilter);
+      if (filterNum === 3 ? t.status !== 3 && t.status !== 4 : t.status !== filterNum) return false;
+    }
+    if (priorityFilter !== "all" && t.priority !== Number(priorityFilter)) return false;
+    return true;
+  });
 
   if (!configLoaded) {
     return (
@@ -355,6 +359,25 @@ const Monitor = () => {
                   <SelectItem value="3">Pendente</SelectItem>
                   <SelectItem value="5">Resolvido</SelectItem>
                   <SelectItem value="6">Fechado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Priority filter */}
+            <div className="flex flex-col gap-1.5 min-w-[160px]">
+              <Label htmlFor="priority-filter">Prioridade</Label>
+              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                <SelectTrigger id="priority-filter">
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="1">Muito baixa</SelectItem>
+                  <SelectItem value="2">Baixa</SelectItem>
+                  <SelectItem value="3">Média</SelectItem>
+                  <SelectItem value="4">Alta</SelectItem>
+                  <SelectItem value="5">Muito alta</SelectItem>
+                  <SelectItem value="6">Crítica</SelectItem>
                 </SelectContent>
               </Select>
             </div>
