@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Ticket } from "@/types/ticket";
 import { getTicketById } from "@/data/mockTickets";
-import { fetchGLPITicket, loadGLPIConfig } from "@/services/glpiService";
+import { fetchGLPITicket, loadGLPIConfig, getGLPIConfig } from "@/services/glpiService";
 import { AddTicketForm } from "@/components/AddTicketForm";
 import { TicketCard } from "@/components/TicketCard";
 import { EmptyState } from "@/components/EmptyState";
@@ -32,7 +32,7 @@ const Index = () => {
       return;
     }
 
-    const mapped: Ticket[] = (data ?? []).map((row) => ({
+    const dbTickets: Ticket[] = (data ?? []).map((row) => ({
       id: row.ticket_id,
       title: row.title,
       status: row.status as Ticket["status"],
@@ -45,8 +45,24 @@ const Index = () => {
       updates: [],
     }));
 
-    setTickets(mapped);
+    setTickets(dbTickets);
     setIsLoadingTickets(false);
+
+    // Re-fetch full data from GLPI API in background to get updates/timeline
+    if (!getGLPIConfig() || dbTickets.length === 0) return;
+
+    const refreshed = await Promise.all(
+      dbTickets.map(async (t) => {
+        try {
+          const fresh = await fetchGLPITicket(t.id);
+          return fresh ? { ...fresh, hasNewUpdates: t.hasNewUpdates } : t;
+        } catch {
+          return t;
+        }
+      })
+    );
+
+    setTickets(refreshed);
   }, [user]);
 
   useEffect(() => {

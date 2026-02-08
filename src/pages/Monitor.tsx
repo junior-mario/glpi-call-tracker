@@ -47,20 +47,58 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
+const FILTERS_CACHE_KEY = "glpi-monitor-filters";
+
+interface CachedFilters {
+  group: string;
+  dateFrom: string | null;
+  dateTo: string | null;
+  status: string;
+}
+
+function loadCachedFilters(): CachedFilters | null {
+  try {
+    const raw = sessionStorage.getItem(FILTERS_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedFilters(filters: CachedFilters): void {
+  sessionStorage.setItem(FILTERS_CACHE_KEY, JSON.stringify(filters));
+}
+
 const Monitor = () => {
   const { user } = useAuth();
+  const cached = loadCachedFilters();
   const [groups, setGroups] = useState<GLPIGroupResponse[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<string>("");
-  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
-  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [selectedGroup, setSelectedGroup] = useState<string>(cached?.group ?? "");
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(
+    cached?.dateFrom ? new Date(cached.dateFrom) : undefined
+  );
+  const [dateTo, setDateTo] = useState<Date | undefined>(
+    cached?.dateTo ? new Date(cached.dateTo) : undefined
+  );
   const [tickets, setTickets] = useState<MonitorTicket[]>([]);
   const [isLoadingGroups, setIsLoadingGroups] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [addingTicketId, setAddingTicketId] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>(cached?.status ?? "all");
   const [trackedIds, setTrackedIds] = useState<Set<string>>(new Set());
   const [configLoaded, setConfigLoaded] = useState(false);
   const [hasConfig, setHasConfig] = useState(false);
+
+  // Persist filter choices to sessionStorage
+  useEffect(() => {
+    saveCachedFilters({
+      group: selectedGroup,
+      dateFrom: dateFrom ? dateFrom.toISOString() : null,
+      dateTo: dateTo ? dateTo.toISOString() : null,
+      status: statusFilter,
+    });
+  }, [selectedGroup, dateFrom, dateTo, statusFilter]);
 
   // Load tracked IDs from Supabase
   useEffect(() => {
@@ -185,6 +223,14 @@ const Monitor = () => {
     }
   };
 
+  const filteredTickets = statusFilter === "all"
+    ? tickets
+    : tickets.filter((t) => {
+        const filterNum = Number(statusFilter);
+        if (filterNum === 3) return t.status === 3 || t.status === 4;
+        return t.status === filterNum;
+      });
+
   if (!configLoaded) {
     return (
       <div className="container max-w-5xl py-6">
@@ -295,6 +341,24 @@ const Monitor = () => {
               </Popover>
             </div>
 
+            {/* Status filter */}
+            <div className="flex flex-col gap-1.5 min-w-[160px]">
+              <Label htmlFor="status-filter">Status</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger id="status-filter">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="1">Novo</SelectItem>
+                  <SelectItem value="2">Em andamento</SelectItem>
+                  <SelectItem value="3">Pendente</SelectItem>
+                  <SelectItem value="5">Resolvido</SelectItem>
+                  <SelectItem value="6">Fechado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Search button */}
             <Button onClick={handleSearch} disabled={isSearching}>
               {isSearching ? (
@@ -318,7 +382,7 @@ const Monitor = () => {
         </Card>
       )}
 
-      {!isSearching && hasSearched && tickets.length === 0 && (
+      {!isSearching && hasSearched && filteredTickets.length === 0 && (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
             Nenhum chamado encontrado para os filtros selecionados.
@@ -326,12 +390,12 @@ const Monitor = () => {
         </Card>
       )}
 
-      {!isSearching && tickets.length > 0 && (
+      {!isSearching && filteredTickets.length > 0 && (
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm text-muted-foreground">
-                {tickets.length} chamado{tickets.length !== 1 ? "s" : ""} encontrado{tickets.length !== 1 ? "s" : ""}
+                {filteredTickets.length} chamado{filteredTickets.length !== 1 ? "s" : ""} encontrado{filteredTickets.length !== 1 ? "s" : ""}
               </span>
             </div>
             <div className="rounded-md border">
@@ -348,7 +412,7 @@ const Monitor = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {tickets.map((ticket) => (
+                  {filteredTickets.map((ticket) => (
                     <TableRow key={ticket.id}>
                       <TableCell className="font-medium">{ticket.id}</TableCell>
                       <TableCell>{ticket.name}</TableCell>
