@@ -70,12 +70,8 @@ const Monitor = () => {
 
     setIsLoadingGroups(true);
     fetchGLPIGroups()
-      .then((data) => {
-        console.log("[Monitor] Grupos carregados:", data.length, data);
-        setGroups(data);
-      })
+      .then(setGroups)
       .catch((err) => {
-        console.error("[Monitor] Erro ao carregar grupos:", err);
         toast({
           title: "Erro ao carregar grupos",
           description: err instanceof Error ? err.message : "Erro desconhecido",
