@@ -35,20 +35,20 @@ import {
   fetchGLPIGroups,
   fetchGLPITicket,
   searchTicketsByGroup,
-  getGLPIConfig,
+  loadGLPIConfig,
   mapGLPIStatus,
   mapGLPIPriority,
 } from "@/services/glpiService";
-import { Ticket } from "@/types/ticket";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-const STORAGE_KEY = "glpi-tracker-tickets";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Monitor = () => {
+  const { user } = useAuth();
   const [groups, setGroups] = useState<GLPIGroupResponse[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>("");
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
@@ -58,27 +58,45 @@ const Monitor = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [addingTicketId, setAddingTicketId] = useState<number | null>(null);
-  const [trackedIds, setTrackedIds] = useState<Set<string>>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return new Set();
-    const list: Ticket[] = JSON.parse(saved);
-    return new Set(list.map((t) => t.id));
-  });
+  const [trackedIds, setTrackedIds] = useState<Set<string>>(new Set());
+  const [configLoaded, setConfigLoaded] = useState(false);
+  const [hasConfig, setHasConfig] = useState(false);
 
+  // Load tracked IDs from Supabase
   useEffect(() => {
-    if (!getGLPIConfig()) return;
+    if (!user) return;
 
-    setIsLoadingGroups(true);
-    fetchGLPIGroups()
-      .then(setGroups)
-      .catch((err) => {
-        toast({
-          title: "Erro ao carregar grupos",
-          description: err instanceof Error ? err.message : "Erro desconhecido",
-          variant: "destructive",
-        });
-      })
-      .finally(() => setIsLoadingGroups(false));
+    supabase
+      .from("tracked_tickets")
+      .select("ticket_id")
+      .eq("user_id", user.id)
+      .then(({ data }) => {
+        if (data) {
+          setTrackedIds(new Set(data.map((r) => r.ticket_id)));
+        }
+      });
+  }, [user]);
+
+  // Load config and groups
+  useEffect(() => {
+    loadGLPIConfig().then((config) => {
+      setHasConfig(!!config);
+      setConfigLoaded(true);
+
+      if (!config) return;
+
+      setIsLoadingGroups(true);
+      fetchGLPIGroups()
+        .then(setGroups)
+        .catch((err) => {
+          toast({
+            title: "Erro ao carregar grupos",
+            description: err instanceof Error ? err.message : "Erro desconhecido",
+            variant: "destructive",
+          });
+        })
+        .finally(() => setIsLoadingGroups(false));
+    });
   }, []);
 
   const handleSearch = async () => {
@@ -112,6 +130,7 @@ const Monitor = () => {
   };
 
   const handleAddToTracker = async (ticketId: number) => {
+    if (!user) return;
     const id = String(ticketId);
     if (trackedIds.has(id)) return;
 
@@ -127,17 +146,30 @@ const Monitor = () => {
         return;
       }
 
-      const saved = localStorage.getItem(STORAGE_KEY);
-      const current: Ticket[] = saved ? JSON.parse(saved) : [];
-      if (current.some((t) => t.id === id)) {
-        setTrackedIds((prev) => new Set(prev).add(id));
+      const { error } = await supabase.from("tracked_tickets").upsert({
+        user_id: user.id,
+        ticket_id: ticket.id,
+        title: ticket.title,
+        status: ticket.status,
+        priority: ticket.priority,
+        assignee: ticket.assignee,
+        requester: ticket.requester,
+        has_new_updates: false,
+        glpi_created_at: ticket.createdAt,
+        glpi_updated_at: ticket.updatedAt,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id,ticket_id" });
+
+      if (error) {
+        toast({
+          title: "Erro ao adicionar chamado",
+          description: error.message,
+          variant: "destructive",
+        });
         return;
       }
 
-      current.unshift(ticket);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
       setTrackedIds((prev) => new Set(prev).add(id));
-
       toast({
         title: "Chamado adicionado",
         description: `O chamado #${id} foi adicionado ao acompanhamento.`,
@@ -153,7 +185,20 @@ const Monitor = () => {
     }
   };
 
-  if (!getGLPIConfig()) {
+  if (!configLoaded) {
+    return (
+      <div className="container max-w-5xl py-6">
+        <Card>
+          <CardContent className="py-10 flex items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Carregando configuração...
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!hasConfig) {
     return (
       <div className="container max-w-5xl py-6">
         <Card>

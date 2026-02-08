@@ -1,17 +1,50 @@
 import { GLPIConfig, GLPISessionResponse, GLPITicketResponse, GLPIFollowupResponse, GLPISolutionResponse, GLPITaskResponse, GLPIValidationResponse, GLPIDocumentItemResponse, GLPIDocumentResponse, GLPIUserResponse, GLPITestResult, GLPIGroupResponse, GLPISearchResponse, MonitorTicket } from "@/types/glpi";
 import { Ticket, TicketStatus, TicketUpdate } from "@/types/ticket";
+import { supabase } from "@/lib/supabase";
 
-const CONFIG_KEY = "glpi-api-config";
+// In-memory cache so synchronous callers (fetchGLPITicket, etc.) can use getGLPIConfig()
+// without awaiting. The cache is populated by loadGLPIConfig() on app init and after saves.
+let configCache: GLPIConfig | null = null;
 
-export function saveGLPIConfig(config: GLPIConfig): void {
-  localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+export async function loadGLPIConfig(): Promise<GLPIConfig | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    configCache = null;
+    return null;
+  }
+
+  const { data } = await supabase
+    .from("glpi_configs")
+    .select("base_url, app_token, user_token")
+    .eq("user_id", user.id)
+    .single();
+
+  if (data) {
+    configCache = {
+      baseUrl: data.base_url,
+      appToken: data.app_token,
+      userToken: data.user_token,
+    };
+    return configCache;
+  }
+
+  // Fallback to environment variables
+  const baseUrl = import.meta.env.VITE_GLPI_URL;
+  const appToken = import.meta.env.VITE_GLPI_APP_TOKEN;
+  const userToken = import.meta.env.VITE_GLPI_USER_TOKEN;
+  if (baseUrl && appToken && userToken) {
+    configCache = { baseUrl, appToken, userToken };
+    return configCache;
+  }
+
+  configCache = null;
+  return null;
 }
 
 export function getGLPIConfig(): GLPIConfig | null {
-  const saved = localStorage.getItem(CONFIG_KEY);
-  if (saved) return JSON.parse(saved);
+  if (configCache) return configCache;
 
-  // Fallback to environment variables
+  // Fallback to environment variables (sync path for first render)
   const baseUrl = import.meta.env.VITE_GLPI_URL;
   const appToken = import.meta.env.VITE_GLPI_APP_TOKEN;
   const userToken = import.meta.env.VITE_GLPI_USER_TOKEN;
@@ -22,8 +55,35 @@ export function getGLPIConfig(): GLPIConfig | null {
   return null;
 }
 
-export function clearGLPIConfig(): void {
-  localStorage.removeItem(CONFIG_KEY);
+export async function saveGLPIConfig(config: GLPIConfig): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Usuário não autenticado");
+
+  const { error } = await supabase
+    .from("glpi_configs")
+    .upsert({
+      user_id: user.id,
+      base_url: config.baseUrl,
+      app_token: config.appToken,
+      user_token: config.userToken,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
+
+  if (error) throw new Error(`Erro ao salvar configuração: ${error.message}`);
+
+  configCache = config;
+}
+
+export async function clearGLPIConfig(): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  await supabase
+    .from("glpi_configs")
+    .delete()
+    .eq("user_id", user.id);
+
+  configCache = null;
 }
 
 // Normalizes the base URL: removes trailing slash and /apirest.php if present

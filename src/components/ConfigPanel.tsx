@@ -7,7 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Settings, TestTube, CheckCircle, XCircle, Loader2, Eye, EyeOff, Save, Trash2 } from "lucide-react";
 import { GLPIConfig, GLPITestResult } from "@/types/glpi";
-import { getGLPIConfig, saveGLPIConfig, clearGLPIConfig, testGLPIConnection } from "@/services/glpiService";
+import { loadGLPIConfig, saveGLPIConfig, clearGLPIConfig, testGLPIConnection } from "@/services/glpiService";
 
 interface ConfigPanelProps {
   onConfigSaved: () => void;
@@ -23,25 +23,34 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
   const [showAppToken, setShowAppToken] = useState(false);
   const [showUserToken, setShowUserToken] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [testResult, setTestResult] = useState<GLPITestResult | null>(null);
   const [hasConfig, setHasConfig] = useState(false);
 
   useEffect(() => {
-    const savedConfig = getGLPIConfig();
-    if (savedConfig) {
-      setConfig(savedConfig);
-      setHasConfig(true);
-    }
+    loadGLPIConfig().then((savedConfig) => {
+      if (savedConfig) {
+        setConfig(savedConfig);
+        setHasConfig(true);
+      }
+    });
   }, []);
 
-  const handleSave = () => {
-    saveGLPIConfig(config);
-    setHasConfig(true);
-    onConfigSaved();
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await saveGLPIConfig(config);
+      setHasConfig(true);
+      onConfigSaved();
+    } catch (error) {
+      console.error("Erro ao salvar configuração:", error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleClear = () => {
-    clearGLPIConfig();
+  const handleClear = async () => {
+    await clearGLPIConfig();
     setConfig({
       baseUrl: "",
       appToken: "",
@@ -144,8 +153,12 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
 
         {/* Action Buttons */}
         <div className="flex gap-3">
-          <Button onClick={handleSave} disabled={!isConfigValid} className="flex-1">
-            <Save className="h-4 w-4 mr-2" />
+          <Button onClick={handleSave} disabled={!isConfigValid || isSaving} className="flex-1">
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
             Salvar Configuração
           </Button>
           {hasConfig && (
@@ -161,7 +174,7 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
         {/* Test Section */}
         <div className="space-y-4">
           <h4 className="font-medium text-sm">Testar Conexão</h4>
-          
+
           <div className="space-y-2">
             <Label htmlFor="testTicketId">Número do Chamado (opcional)</Label>
             <Input
@@ -175,8 +188,8 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
             </p>
           </div>
 
-          <Button 
-            onClick={handleTest} 
+          <Button
+            onClick={handleTest}
             disabled={!isConfigValid || isTesting}
             variant="secondary"
             className="w-full"

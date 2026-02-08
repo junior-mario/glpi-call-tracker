@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, ClipboardList, Settings, Monitor } from "lucide-react";
+import { LayoutDashboard, ClipboardList, Settings, Monitor, LogOut } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -14,6 +14,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useAuth } from "@/contexts/AuthContext";
 
 const menuItems = [
   { title: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
@@ -25,6 +26,7 @@ const menuItems = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
+  const { signOut, user } = useAuth();
 
   return (
     <Sidebar collapsible="icon" side="left">
@@ -68,6 +70,19 @@ export function AppSidebar() {
 
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
+          {state === "expanded" && user && (
+            <SidebarMenuItem>
+              <div className="px-2 py-1 text-xs text-muted-foreground truncate">
+                {user.email}
+              </div>
+            </SidebarMenuItem>
+          )}
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip="Sair" onClick={signOut}>
+              <LogOut />
+              <span>Sair</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarTrigger className="w-full justify-start gap-2 h-8">
               {state === "expanded" && (
