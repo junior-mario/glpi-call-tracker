@@ -638,72 +638,103 @@ export async function searchTicketsByGroup(
   const sessionToken = await initSession(config);
 
   try {
-    const params = new URLSearchParams({
-      // Fields to display
-      "forcedisplay[0]": "1",  // Name
-      "forcedisplay[1]": "2",  // ID
-      "forcedisplay[2]": "12", // Status
-      "forcedisplay[3]": "15", // Open date
-      "forcedisplay[4]": "19", // Last update
-      "forcedisplay[5]": "3",  // Priority
-      "forcedisplay[6]": "5",  // Technician
-      "range": "0-200",
-    });
-
-    // Discover and include Tag plugin field if available
+    // Discover tag field before building params
     const tagField = await discoverTagFieldId(config, sessionToken);
-    if (tagField !== null) {
-      params.set("forcedisplay[7]", String(tagField));
-    }
 
-    let criterionIndex = 0;
+    // Adjust dates to make boundaries inclusive:
+    // morethan (dateFrom - 1 day) => effectively >= dateFrom
+    // lessthan (dateTo + 1 day)   => effectively <= dateTo
+    const fromDate = new Date(dateFrom + "T00:00:00");
+    fromDate.setDate(fromDate.getDate() - 1);
+    const adjustedFrom = fromDate.toISOString().split("T")[0];
 
-    // Optional: Group assigned (field 8)
-    if (groupId) {
-      params.set(`criteria[${criterionIndex}][field]`, "8");
-      params.set(`criteria[${criterionIndex}][searchtype]`, "equals");
-      params.set(`criteria[${criterionIndex}][value]`, String(groupId));
-      criterionIndex++;
-    }
+    const toDate = new Date(dateTo + "T00:00:00");
+    toDate.setDate(toDate.getDate() + 1);
+    const adjustedTo = toDate.toISOString().split("T")[0];
 
-    // Open date (field 15) >= dateFrom
-    params.set(`criteria[${criterionIndex}][link]`, "AND");
-    params.set(`criteria[${criterionIndex}][field]`, "15");
-    params.set(`criteria[${criterionIndex}][searchtype]`, "morethan");
-    params.set(`criteria[${criterionIndex}][value]`, dateFrom);
-    criterionIndex++;
+    // Build base params (without range — set per page)
+    function buildParams(rangeStart: number, rangeEnd: number): URLSearchParams {
+      const params = new URLSearchParams({
+        "forcedisplay[0]": "1",  // Name
+        "forcedisplay[1]": "2",  // ID
+        "forcedisplay[2]": "12", // Status
+        "forcedisplay[3]": "15", // Open date
+        "forcedisplay[4]": "19", // Last update
+        "forcedisplay[5]": "3",  // Priority
+        "forcedisplay[6]": "5",  // Technician
+        "range": `${rangeStart}-${rangeEnd}`,
+      });
 
-    // Open date (field 15) <= dateTo
-    params.set(`criteria[${criterionIndex}][link]`, "AND");
-    params.set(`criteria[${criterionIndex}][field]`, "15");
-    params.set(`criteria[${criterionIndex}][searchtype]`, "lessthan");
-    params.set(`criteria[${criterionIndex}][value]`, dateTo);
-
-    const response = await fetch(
-      `${getApiBaseUrl(config)}/apirest.php/search/Ticket?${params.toString()}`,
-      {
-        method: "GET",
-        headers: {
-          "App-Token": config.appToken,
-          "Session-Token": sessionToken,
-        },
+      if (tagField !== null) {
+        params.set("forcedisplay[7]", String(tagField));
       }
-    );
 
-    if (!response.ok && response.status !== 206) {
-      const body = await response.json().catch(() => null);
-      const detail = parseGLPIError(body);
-      throw new Error(detail || `Erro ao buscar chamados (HTTP ${response.status})`);
+      let criterionIndex = 0;
+
+      if (groupId) {
+        params.set(`criteria[${criterionIndex}][field]`, "8");
+        params.set(`criteria[${criterionIndex}][searchtype]`, "equals");
+        params.set(`criteria[${criterionIndex}][value]`, String(groupId));
+        criterionIndex++;
+      }
+
+      params.set(`criteria[${criterionIndex}][link]`, "AND");
+      params.set(`criteria[${criterionIndex}][field]`, "15");
+      params.set(`criteria[${criterionIndex}][searchtype]`, "morethan");
+      params.set(`criteria[${criterionIndex}][value]`, adjustedFrom);
+      criterionIndex++;
+
+      params.set(`criteria[${criterionIndex}][link]`, "AND");
+      params.set(`criteria[${criterionIndex}][field]`, "15");
+      params.set(`criteria[${criterionIndex}][searchtype]`, "lessthan");
+      params.set(`criteria[${criterionIndex}][value]`, adjustedTo);
+
+      return params;
     }
 
-    const result: GLPISearchResponse = await response.json();
+    // Fetch with pagination (500 per page, up to 5000 total)
+    const PAGE_SIZE = 500;
+    const MAX_RESULTS = 5000;
+    const allRows: Record<string, string | number | null>[] = [];
+    let totalcount = 0;
 
-    if (!result.data || !Array.isArray(result.data)) return [];
+    for (let start = 0; start < MAX_RESULTS; start += PAGE_SIZE) {
+      const params = buildParams(start, start + PAGE_SIZE - 1);
+
+      const response = await fetch(
+        `${getApiBaseUrl(config)}/apirest.php/search/Ticket?${params.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            "App-Token": config.appToken,
+            "Session-Token": sessionToken,
+          },
+        }
+      );
+
+      if (!response.ok && response.status !== 206) {
+        const body = await response.json().catch(() => null);
+        const detail = parseGLPIError(body);
+        throw new Error(detail || `Erro ao buscar chamados (HTTP ${response.status})`);
+      }
+
+      const result: GLPISearchResponse = await response.json();
+      totalcount = result.totalcount || 0;
+
+      if (!result.data || !Array.isArray(result.data) || result.data.length === 0) break;
+
+      allRows.push(...result.data);
+
+      // Stop if we've fetched all results
+      if (allRows.length >= totalcount) break;
+    }
+
+    if (allRows.length === 0) return [];
 
     // Resolve technician IDs to names
     const resolveUser = createUserResolver(config, sessionToken);
     const techIds = new Set(
-      result.data.map((row) => Number(row["5"])).filter((id) => id > 0)
+      allRows.map((row) => Number(row["5"])).filter((id) => id > 0)
     );
     const nameMap = new Map<number, string>();
     await Promise.all(
@@ -712,7 +743,7 @@ export async function searchTicketsByGroup(
       })
     );
 
-    return result.data.map((row) => {
+    return allRows.map((row) => {
       const techId = Number(row["5"]);
       return {
         id: Number(row["2"]),
