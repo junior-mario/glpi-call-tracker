@@ -428,24 +428,22 @@ const Monitor = () => {
             </div>
 
             {/* Tag filter */}
-            {tagOptions.length > 0 && (
-              <div className="flex flex-col gap-1.5 min-w-[160px]">
-                <Label htmlFor="tag-filter">Tag</Label>
-                <Select value={tagFilter} onValueChange={setTagFilter}>
-                  <SelectTrigger id="tag-filter">
-                    <SelectValue placeholder="Todas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas</SelectItem>
-                    {tagOptions.map((tag) => (
-                      <SelectItem key={tag} value={tag}>
-                        {tag}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="flex flex-col gap-1.5 min-w-[160px]">
+              <Label htmlFor="tag-filter">Tag</Label>
+              <Select value={tagFilter} onValueChange={setTagFilter}>
+                <SelectTrigger id="tag-filter">
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {tagOptions.map((tag) => (
+                    <SelectItem key={tag} value={tag}>
+                      {tag}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* Search button */}
             <Button onClick={handleSearch} disabled={isSearching}>
