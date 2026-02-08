@@ -1,4 +1,4 @@
-import { GLPIConfig, GLPISessionResponse, GLPITicketResponse, GLPIFollowupResponse, GLPISolutionResponse, GLPITaskResponse, GLPIValidationResponse, GLPIDocumentItemResponse, GLPIDocumentResponse, GLPIUserResponse, GLPITestResult } from "@/types/glpi";
+import { GLPIConfig, GLPISessionResponse, GLPITicketResponse, GLPIFollowupResponse, GLPISolutionResponse, GLPITaskResponse, GLPIValidationResponse, GLPIDocumentItemResponse, GLPIDocumentResponse, GLPIUserResponse, GLPITestResult, GLPIGroupResponse, GLPISearchResponse, MonitorTicket } from "@/types/glpi";
 import { Ticket, TicketStatus, TicketUpdate } from "@/types/ticket";
 
 const CONFIG_KEY = "glpi-api-config";
@@ -9,7 +9,17 @@ export function saveGLPIConfig(config: GLPIConfig): void {
 
 export function getGLPIConfig(): GLPIConfig | null {
   const saved = localStorage.getItem(CONFIG_KEY);
-  return saved ? JSON.parse(saved) : null;
+  if (saved) return JSON.parse(saved);
+
+  // Fallback to environment variables
+  const baseUrl = import.meta.env.VITE_GLPI_URL;
+  const appToken = import.meta.env.VITE_GLPI_APP_TOKEN;
+  const userToken = import.meta.env.VITE_GLPI_USER_TOKEN;
+  if (baseUrl && appToken && userToken) {
+    return { baseUrl, appToken, userToken };
+  }
+
+  return null;
 }
 
 export function clearGLPIConfig(): void {
@@ -108,7 +118,7 @@ function parseGLPIError(data: unknown): string {
 }
 
 // Map GLPI status codes to our status
-function mapGLPIStatus(status: number): TicketStatus {
+export function mapGLPIStatus(status: number): TicketStatus {
   switch (status) {
     case 1: return "new";
     case 2: return "in-progress";
@@ -121,7 +131,7 @@ function mapGLPIStatus(status: number): TicketStatus {
 }
 
 // Map GLPI priority codes to our priority
-function mapGLPIPriority(priority: number): Ticket["priority"] {
+export function mapGLPIPriority(priority: number): Ticket["priority"] {
   switch (priority) {
     case 1: return "low";
     case 2: return "low";
@@ -466,6 +476,115 @@ export async function fetchGLPITicket(ticketId: string): Promise<Ticket | null> 
     };
 
     return ticket;
+  } finally {
+    await killSession(config, sessionToken);
+  }
+}
+
+export async function fetchGLPIGroups(): Promise<GLPIGroupResponse[]> {
+  const config = getGLPIConfig();
+  if (!config) throw new Error("Configuração da API GLPI não encontrada");
+
+  const sessionToken = await initSession(config);
+
+  try {
+    const response = await fetch(
+      `${getApiBaseUrl(config)}/apirest.php/Group?range=0-999&order=ASC`,
+      {
+        method: "GET",
+        headers: {
+          "App-Token": config.appToken,
+          "Session-Token": sessionToken,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // GLPI returns 200 or 206 (partial content) for valid responses
+    if (!response.ok && response.status !== 206) {
+      const body = await response.json().catch(() => null);
+      const detail = parseGLPIError(body);
+      throw new Error(detail || `Erro ao buscar grupos (HTTP ${response.status})`);
+    }
+
+    const data = await response.json();
+    if (!Array.isArray(data)) return [];
+
+    return data
+      .filter((g: GLPIGroupResponse) => g.id && g.name)
+      .sort((a: GLPIGroupResponse, b: GLPIGroupResponse) =>
+        (a.completename || a.name).localeCompare(b.completename || b.name)
+      );
+  } finally {
+    await killSession(config, sessionToken);
+  }
+}
+
+export async function searchTicketsByGroup(
+  groupId: number,
+  dateFrom: string,
+  dateTo: string
+): Promise<MonitorTicket[]> {
+  const config = getGLPIConfig();
+  if (!config) throw new Error("Configuração da API GLPI não encontrada");
+
+  const sessionToken = await initSession(config);
+
+  try {
+    const params = new URLSearchParams({
+      // Criterion 0: Group assigned (field 8) = groupId
+      "criteria[0][field]": "8",
+      "criteria[0][searchtype]": "equals",
+      "criteria[0][value]": String(groupId),
+      // Criterion 1: AND open date (field 15) >= dateFrom
+      "criteria[1][link]": "AND",
+      "criteria[1][field]": "15",
+      "criteria[1][searchtype]": "morethan",
+      "criteria[1][value]": dateFrom,
+      // Criterion 2: AND open date (field 15) <= dateTo
+      "criteria[2][link]": "AND",
+      "criteria[2][field]": "15",
+      "criteria[2][searchtype]": "lessthan",
+      "criteria[2][value]": dateTo,
+      // Fields to display
+      "forcedisplay[0]": "1",  // Name
+      "forcedisplay[1]": "2",  // ID
+      "forcedisplay[2]": "12", // Status
+      "forcedisplay[3]": "15", // Open date
+      "forcedisplay[4]": "19", // Last update
+      "forcedisplay[5]": "3",  // Priority
+      "range": "0-200",
+    });
+
+    const response = await fetch(
+      `${getApiBaseUrl(config)}/apirest.php/search/Ticket?${params.toString()}`,
+      {
+        method: "GET",
+        headers: {
+          "App-Token": config.appToken,
+          "Session-Token": sessionToken,
+        },
+      }
+    );
+
+    if (!response.ok && response.status !== 206) {
+      const body = await response.json().catch(() => null);
+      const detail = parseGLPIError(body);
+      throw new Error(detail || `Erro ao buscar chamados (HTTP ${response.status})`);
+    }
+
+    const result: GLPISearchResponse = await response.json();
+
+    if (!result.data || !Array.isArray(result.data)) return [];
+
+    return result.data.map((row) => ({
+      id: Number(row["2"]),
+      name: String(row["1"] || ""),
+      status: Number(row["12"]),
+      priority: Number(row["3"]),
+      date: String(row["15"] || ""),
+      date_mod: String(row["19"] || ""),
+    }));
   } finally {
     await killSession(config, sessionToken);
   }

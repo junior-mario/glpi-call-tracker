@@ -84,3 +84,26 @@ export interface GLPITestResult {
   sessionToken?: string;
   ticketData?: GLPITicketResponse;
 }
+
+export interface GLPIGroupResponse {
+  id: number;
+  name: string;
+  completename: string;
+}
+
+export interface GLPISearchResponse {
+  totalcount: number;
+  count: number;
+  sort: number;
+  order: string;
+  data: Record<string, string | number | null>[];
+}
+
+export interface MonitorTicket {
+  id: number;
+  name: string;
+  status: number;
+  priority: number;
+  date: string;
+  date_mod: string;
+}
