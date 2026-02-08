@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Ticket } from "@/types/ticket";
 import { getTicketById } from "@/data/mockTickets";
 import { fetchGLPITicket, loadGLPIConfig, getGLPIConfig } from "@/services/glpiService";
@@ -9,12 +9,37 @@ import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
+const POLL_INTERVAL = 10 * 60 * 1000; // 10 minutes
+
+function requestNotificationPermission() {
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+}
+
+function showNotification(title: string, body: string) {
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification(title, { body, icon: "/favicon.ico" });
+  }
+}
+
 const Index = () => {
   const { user } = useAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingTickets, setIsLoadingTickets] = useState(true);
   const [hasApiConfig, setHasApiConfig] = useState(false);
+  const ticketsRef = useRef<Ticket[]>([]);
+
+  // Keep ref in sync for polling comparisons
+  useEffect(() => {
+    ticketsRef.current = tickets;
+  }, [tickets]);
+
+  // Request notification permission on mount
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
 
   const loadTickets = useCallback(async () => {
     if (!user) return;
@@ -65,9 +90,74 @@ const Index = () => {
     setTickets(refreshed);
   }, [user]);
 
+  // Poll tickets every 10 minutes to detect new updates
+  const pollTickets = useCallback(async () => {
+    if (!user || !getGLPIConfig()) return;
+    const current = ticketsRef.current;
+    if (current.length === 0) return;
+
+    const updatedTickets: Ticket[] = [];
+    const notifyList: Ticket[] = [];
+
+    for (const t of current) {
+      try {
+        const fresh = await fetchGLPITicket(t.id);
+        if (!fresh) {
+          updatedTickets.push(t);
+          continue;
+        }
+
+        const hasNew = fresh.updatedAt !== t.updatedAt;
+        const ticket = { ...fresh, hasNewUpdates: hasNew || t.hasNewUpdates };
+        updatedTickets.push(ticket);
+
+        if (hasNew) {
+          notifyList.push(ticket);
+          // Persist has_new_updates in DB
+          await supabase
+            .from("tracked_tickets")
+            .update({
+              has_new_updates: true,
+              status: ticket.status,
+              priority: ticket.priority,
+              assignee: ticket.assignee,
+              glpi_updated_at: ticket.updatedAt,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("user_id", user.id)
+            .eq("ticket_id", ticket.id);
+        }
+      } catch {
+        updatedTickets.push(t);
+      }
+    }
+
+    setTickets(updatedTickets);
+
+    // Browser notifications
+    if (notifyList.length === 1) {
+      const t = notifyList[0];
+      showNotification(
+        `Chamado #${t.id} atualizado`,
+        t.title
+      );
+    } else if (notifyList.length > 1) {
+      showNotification(
+        `${notifyList.length} chamados atualizados`,
+        notifyList.map((t) => `#${t.id}`).join(", ")
+      );
+    }
+  }, [user]);
+
   useEffect(() => {
     loadTickets();
   }, [loadTickets]);
+
+  // Start polling interval
+  useEffect(() => {
+    const interval = setInterval(pollTickets, POLL_INTERVAL);
+    return () => clearInterval(interval);
+  }, [pollTickets]);
 
   useEffect(() => {
     loadGLPIConfig().then((config) => setHasApiConfig(!!config));

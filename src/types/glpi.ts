@@ -102,6 +102,7 @@ export interface GLPISearchResponse {
 export interface MonitorTicket {
   id: number;
   name: string;
+  technician: string;
   status: number;
   priority: number;
   date: string;

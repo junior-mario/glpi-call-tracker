@@ -581,7 +581,7 @@ export async function fetchGLPIGroups(): Promise<GLPIGroupResponse[]> {
 }
 
 export async function searchTicketsByGroup(
-  groupId: number,
+  groupId: number | null,
   dateFrom: string,
   dateTo: string
 ): Promise<MonitorTicket[]> {
@@ -592,20 +592,6 @@ export async function searchTicketsByGroup(
 
   try {
     const params = new URLSearchParams({
-      // Criterion 0: Group assigned (field 8) = groupId
-      "criteria[0][field]": "8",
-      "criteria[0][searchtype]": "equals",
-      "criteria[0][value]": String(groupId),
-      // Criterion 1: AND open date (field 15) >= dateFrom
-      "criteria[1][link]": "AND",
-      "criteria[1][field]": "15",
-      "criteria[1][searchtype]": "morethan",
-      "criteria[1][value]": dateFrom,
-      // Criterion 2: AND open date (field 15) <= dateTo
-      "criteria[2][link]": "AND",
-      "criteria[2][field]": "15",
-      "criteria[2][searchtype]": "lessthan",
-      "criteria[2][value]": dateTo,
       // Fields to display
       "forcedisplay[0]": "1",  // Name
       "forcedisplay[1]": "2",  // ID
@@ -613,8 +599,32 @@ export async function searchTicketsByGroup(
       "forcedisplay[3]": "15", // Open date
       "forcedisplay[4]": "19", // Last update
       "forcedisplay[5]": "3",  // Priority
+      "forcedisplay[6]": "5",  // Technician
       "range": "0-200",
     });
+
+    let criterionIndex = 0;
+
+    // Optional: Group assigned (field 8)
+    if (groupId) {
+      params.set(`criteria[${criterionIndex}][field]`, "8");
+      params.set(`criteria[${criterionIndex}][searchtype]`, "equals");
+      params.set(`criteria[${criterionIndex}][value]`, String(groupId));
+      criterionIndex++;
+    }
+
+    // Open date (field 15) >= dateFrom
+    params.set(`criteria[${criterionIndex}][link]`, "AND");
+    params.set(`criteria[${criterionIndex}][field]`, "15");
+    params.set(`criteria[${criterionIndex}][searchtype]`, "morethan");
+    params.set(`criteria[${criterionIndex}][value]`, dateFrom);
+    criterionIndex++;
+
+    // Open date (field 15) <= dateTo
+    params.set(`criteria[${criterionIndex}][link]`, "AND");
+    params.set(`criteria[${criterionIndex}][field]`, "15");
+    params.set(`criteria[${criterionIndex}][searchtype]`, "lessthan");
+    params.set(`criteria[${criterionIndex}][value]`, dateTo);
 
     const response = await fetch(
       `${getApiBaseUrl(config)}/apirest.php/search/Ticket?${params.toString()}`,
@@ -637,14 +647,30 @@ export async function searchTicketsByGroup(
 
     if (!result.data || !Array.isArray(result.data)) return [];
 
-    return result.data.map((row) => ({
-      id: Number(row["2"]),
-      name: String(row["1"] || ""),
-      status: Number(row["12"]),
-      priority: Number(row["3"]),
-      date: String(row["15"] || ""),
-      date_mod: String(row["19"] || ""),
-    }));
+    // Resolve technician IDs to names
+    const resolveUser = createUserResolver(config, sessionToken);
+    const techIds = new Set(
+      result.data.map((row) => Number(row["5"])).filter((id) => id > 0)
+    );
+    const nameMap = new Map<number, string>();
+    await Promise.all(
+      Array.from(techIds).map(async (id) => {
+        nameMap.set(id, await resolveUser(id));
+      })
+    );
+
+    return result.data.map((row) => {
+      const techId = Number(row["5"]);
+      return {
+        id: Number(row["2"]),
+        name: String(row["1"] || ""),
+        technician: nameMap.get(techId) ?? "",
+        status: Number(row["12"]),
+        priority: Number(row["3"]),
+        date: String(row["15"] || ""),
+        date_mod: String(row["19"] || ""),
+      };
+    });
   } finally {
     await killSession(config, sessionToken);
   }

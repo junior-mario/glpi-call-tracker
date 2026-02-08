@@ -29,7 +29,7 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead }: TicketCardProps) 
     <Card className="relative overflow-hidden transition-all duration-300 hover:shadow-lg animate-slide-up">
       {/* Update indicator */}
       {ticket.hasNewUpdates && (
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-update-indicator to-orange-400" />
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 to-red-400" />
       )}
 
       <CardHeader className="pb-3">
@@ -42,7 +42,7 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead }: TicketCardProps) 
               <StatusBadge status={ticket.status} />
               <PriorityBadge priority={ticket.priority} />
               {ticket.hasNewUpdates && (
-                <div className="flex items-center gap-1 text-update-indicator animate-pulse-slow">
+                <div className="flex items-center gap-1 text-red-500 animate-pulse-slow">
                   <Bell className="h-3.5 w-3.5" />
                   <span className="text-xs font-medium">Nova atualização</span>
                 </div>

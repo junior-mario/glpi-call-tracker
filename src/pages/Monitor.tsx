@@ -55,6 +55,7 @@ interface CachedFilters {
   dateTo: string | null;
   status: string;
   priority: string;
+  technician: string;
 }
 
 function loadCachedFilters(): CachedFilters | null {
@@ -88,6 +89,7 @@ const Monitor = () => {
   const [addingTicketId, setAddingTicketId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>(cached?.status ?? "all");
   const [priorityFilter, setPriorityFilter] = useState<string>(cached?.priority ?? "all");
+  const [technicianFilter, setTechnicianFilter] = useState<string>(cached?.technician ?? "all");
   const [trackedIds, setTrackedIds] = useState<Set<string>>(new Set());
   const [configLoaded, setConfigLoaded] = useState(false);
   const [hasConfig, setHasConfig] = useState(false);
@@ -100,8 +102,9 @@ const Monitor = () => {
       dateTo: dateTo ? dateTo.toISOString() : null,
       status: statusFilter,
       priority: priorityFilter,
+      technician: technicianFilter,
     });
-  }, [selectedGroup, dateFrom, dateTo, statusFilter, priorityFilter]);
+  }, [selectedGroup, dateFrom, dateTo, statusFilter, priorityFilter, technicianFilter]);
 
   // Load tracked IDs from Supabase
   useEffect(() => {
@@ -141,10 +144,10 @@ const Monitor = () => {
   }, []);
 
   const handleSearch = async () => {
-    if (!selectedGroup || !dateFrom || !dateTo) {
+    if (!dateFrom || !dateTo) {
       toast({
-        title: "Preencha todos os filtros",
-        description: "Selecione um grupo e o período de datas.",
+        title: "Preencha o período",
+        description: "Selecione as datas de início e fim.",
         variant: "destructive",
       });
       return;
@@ -156,7 +159,8 @@ const Monitor = () => {
     try {
       const from = format(dateFrom, "yyyy-MM-dd");
       const to = format(dateTo, "yyyy-MM-dd");
-      const result = await searchTicketsByGroup(Number(selectedGroup), from, to);
+      const groupId = selectedGroup && selectedGroup !== "all" ? Number(selectedGroup) : null;
+      const result = await searchTicketsByGroup(groupId, from, to);
       setTickets(result);
     } catch (err) {
       toast({
@@ -226,12 +230,18 @@ const Monitor = () => {
     }
   };
 
+  // Extract unique technician names from results for the filter dropdown
+  const technicianOptions = Array.from(
+    new Set(tickets.map((t) => t.technician).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+
   const filteredTickets = tickets.filter((t) => {
     if (statusFilter !== "all") {
       const filterNum = Number(statusFilter);
       if (filterNum === 3 ? t.status !== 3 && t.status !== 4 : t.status !== filterNum) return false;
     }
     if (priorityFilter !== "all" && t.priority !== Number(priorityFilter)) return false;
+    if (technicianFilter !== "all" && t.technician !== technicianFilter) return false;
     return true;
   });
 
@@ -280,6 +290,7 @@ const Monitor = () => {
                   />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="all">Todos os grupos</SelectItem>
                   {groups.map((g) => (
                     <SelectItem key={g.id} value={String(g.id)}>
                       {g.completename}
@@ -382,6 +393,24 @@ const Monitor = () => {
               </Select>
             </div>
 
+            {/* Technician filter */}
+            <div className="flex flex-col gap-1.5 min-w-[180px]">
+              <Label htmlFor="technician-filter">Técnico</Label>
+              <Select value={technicianFilter} onValueChange={setTechnicianFilter}>
+                <SelectTrigger id="technician-filter">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {technicianOptions.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Search button */}
             <Button onClick={handleSearch} disabled={isSearching}>
               {isSearching ? (
@@ -427,6 +456,7 @@ const Monitor = () => {
                   <TableRow>
                     <TableHead className="w-[80px]">ID</TableHead>
                     <TableHead>Título</TableHead>
+                    <TableHead className="w-[150px]">Técnico</TableHead>
                     <TableHead className="w-[130px]">Status</TableHead>
                     <TableHead className="w-[110px]">Prioridade</TableHead>
                     <TableHead className="w-[120px]">Abertura</TableHead>
@@ -439,6 +469,7 @@ const Monitor = () => {
                     <TableRow key={ticket.id}>
                       <TableCell className="font-medium">{ticket.id}</TableCell>
                       <TableCell>{ticket.name}</TableCell>
+                      <TableCell className="text-sm">{ticket.technician || "-"}</TableCell>
                       <TableCell>
                         <StatusBadge status={mapGLPIStatus(ticket.status)} />
                       </TableCell>
