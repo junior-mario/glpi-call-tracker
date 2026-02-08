@@ -56,6 +56,7 @@ interface CachedFilters {
   status: string;
   priority: string;
   technician: string;
+  tag: string;
 }
 
 function loadCachedFilters(): CachedFilters | null {
@@ -90,6 +91,7 @@ const Monitor = () => {
   const [statusFilter, setStatusFilter] = useState<string>(cached?.status ?? "all");
   const [priorityFilter, setPriorityFilter] = useState<string>(cached?.priority ?? "all");
   const [technicianFilter, setTechnicianFilter] = useState<string>(cached?.technician ?? "all");
+  const [tagFilter, setTagFilter] = useState<string>(cached?.tag ?? "all");
   const [trackedIds, setTrackedIds] = useState<Set<string>>(new Set());
   const [configLoaded, setConfigLoaded] = useState(false);
   const [hasConfig, setHasConfig] = useState(false);
@@ -103,8 +105,9 @@ const Monitor = () => {
       status: statusFilter,
       priority: priorityFilter,
       technician: technicianFilter,
+      tag: tagFilter,
     });
-  }, [selectedGroup, dateFrom, dateTo, statusFilter, priorityFilter, technicianFilter]);
+  }, [selectedGroup, dateFrom, dateTo, statusFilter, priorityFilter, technicianFilter, tagFilter]);
 
   // Load tracked IDs from Supabase
   useEffect(() => {
@@ -235,13 +238,25 @@ const Monitor = () => {
     new Set(tickets.map((t) => t.technician).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b));
 
+  // Extract unique tags from results for the filter dropdown
+  const tagOptions = Array.from(
+    new Set(
+      tickets
+        .flatMap((t) => t.tags.split(/,\s*|;\s*|\$\$/).map((s) => s.trim()))
+        .filter(Boolean)
+    )
+  ).sort((a, b) => a.localeCompare(b));
+
   const filteredTickets = tickets.filter((t) => {
-    if (statusFilter !== "all") {
+    if (statusFilter === "unsolved") {
+      if (t.status === 5 || t.status === 6) return false;
+    } else if (statusFilter !== "all") {
       const filterNum = Number(statusFilter);
       if (filterNum === 3 ? t.status !== 3 && t.status !== 4 : t.status !== filterNum) return false;
     }
     if (priorityFilter !== "all" && t.priority !== Number(priorityFilter)) return false;
     if (technicianFilter !== "all" && t.technician !== technicianFilter) return false;
+    if (tagFilter !== "all" && !t.tags.toLowerCase().includes(tagFilter.toLowerCase())) return false;
     return true;
   });
 
@@ -365,6 +380,7 @@ const Monitor = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="unsolved">Não solucionados</SelectItem>
                   <SelectItem value="1">Novo</SelectItem>
                   <SelectItem value="2">Em andamento</SelectItem>
                   <SelectItem value="3">Pendente</SelectItem>
@@ -410,6 +426,26 @@ const Monitor = () => {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Tag filter */}
+            {tagOptions.length > 0 && (
+              <div className="flex flex-col gap-1.5 min-w-[160px]">
+                <Label htmlFor="tag-filter">Tag</Label>
+                <Select value={tagFilter} onValueChange={setTagFilter}>
+                  <SelectTrigger id="tag-filter">
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {tagOptions.map((tag) => (
+                      <SelectItem key={tag} value={tag}>
+                        {tag}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Search button */}
             <Button onClick={handleSearch} disabled={isSearching}>
@@ -461,6 +497,7 @@ const Monitor = () => {
                     <TableHead className="w-[110px]">Prioridade</TableHead>
                     <TableHead className="w-[120px]">Abertura</TableHead>
                     <TableHead className="w-[120px]">Atualização</TableHead>
+                    <TableHead className="w-[150px]">Tags</TableHead>
                     <TableHead className="w-[50px]" />
                   </TableRow>
                 </TableHeader>
@@ -485,6 +522,20 @@ const Monitor = () => {
                         {ticket.date_mod
                           ? format(new Date(ticket.date_mod), "dd/MM/yyyy", { locale: ptBR })
                           : "-"}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {ticket.tags ? (
+                          <div className="flex flex-wrap gap-1">
+                            {ticket.tags.split(/,\s*|;\s*|\$\$/).filter(Boolean).map((tag, i) => (
+                              <span
+                                key={i}
+                                className="inline-block bg-muted text-muted-foreground px-2 py-0.5 rounded text-xs"
+                              >
+                                {tag.trim()}
+                              </span>
+                            ))}
+                          </div>
+                        ) : "-"}
                       </TableCell>
                       <TableCell>
                         {trackedIds.has(String(ticket.id)) ? (

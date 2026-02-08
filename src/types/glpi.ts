@@ -107,4 +107,5 @@ export interface MonitorTicket {
   priority: number;
   date: string;
   date_mod: string;
+  tags: string;
 }

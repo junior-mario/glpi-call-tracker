@@ -580,6 +580,53 @@ export async function fetchGLPIGroups(): Promise<GLPIGroupResponse[]> {
   }
 }
 
+// Cache for the Tag plugin search field ID (undefined = not checked, null = not found)
+let tagFieldId: number | null | undefined = undefined;
+
+async function discoverTagFieldId(
+  config: GLPIConfig,
+  sessionToken: string
+): Promise<number | null> {
+  if (tagFieldId !== undefined) return tagFieldId;
+
+  try {
+    const response = await fetch(
+      `${getApiBaseUrl(config)}/apirest.php/listSearchOptions/Ticket`,
+      {
+        method: "GET",
+        headers: {
+          "App-Token": config.appToken,
+          "Session-Token": sessionToken,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      tagFieldId = null;
+      return null;
+    }
+
+    const options = await response.json();
+
+    for (const [id, opt] of Object.entries(options)) {
+      const o = opt as { uid?: string; name?: string };
+      if (
+        o.uid &&
+        o.uid.toLowerCase().includes("plugintag")
+      ) {
+        tagFieldId = Number(id);
+        return tagFieldId;
+      }
+    }
+
+    tagFieldId = null;
+    return null;
+  } catch {
+    tagFieldId = null;
+    return null;
+  }
+}
+
 export async function searchTicketsByGroup(
   groupId: number | null,
   dateFrom: string,
@@ -602,6 +649,12 @@ export async function searchTicketsByGroup(
       "forcedisplay[6]": "5",  // Technician
       "range": "0-200",
     });
+
+    // Discover and include Tag plugin field if available
+    const tagField = await discoverTagFieldId(config, sessionToken);
+    if (tagField !== null) {
+      params.set("forcedisplay[7]", String(tagField));
+    }
 
     let criterionIndex = 0;
 
@@ -669,6 +722,7 @@ export async function searchTicketsByGroup(
         priority: Number(row["3"]),
         date: String(row["15"] || ""),
         date_mod: String(row["19"] || ""),
+        tags: tagField !== null ? String(row[String(tagField)] || "") : "",
       };
     });
   } finally {
