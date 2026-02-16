@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ClipboardList, CheckCircle } from "lucide-react";
+import { Loader2, ClipboardList } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 const Register = () => {
@@ -14,7 +14,6 @@ const Register = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (loading) {
@@ -48,34 +47,10 @@ const Register = () => {
     const { error } = await signUp(email, password);
     if (error) {
       setError(error);
-    } else {
-      setSuccess(true);
     }
+    // On success, signUp sets the user in context, which triggers Navigate above
     setIsSubmitting(false);
   };
-
-  if (success) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-sm">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-green-500/10">
-              <CheckCircle className="h-6 w-6 text-green-500" />
-            </div>
-            <CardTitle className="text-xl">Conta criada!</CardTitle>
-            <CardDescription>
-              Verifique seu email para confirmar o cadastro.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link to="/login">
-              <Button className="w-full">Ir para o Login</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">

@@ -44,7 +44,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { supabase } from "@/lib/supabase";
+import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 const FILTERS_CACHE_KEY = "glpi-monitor-filters";
@@ -109,19 +109,15 @@ const Monitor = () => {
     });
   }, [selectedGroup, dateFrom, dateTo, statusFilter, priorityFilter, technicianFilter, tagFilter]);
 
-  // Load tracked IDs from Supabase
+  // Load tracked IDs from backend
   useEffect(() => {
     if (!user) return;
 
-    supabase
-      .from("tracked_tickets")
-      .select("ticket_id")
-      .eq("user_id", user.id)
-      .then(({ data }) => {
-        if (data) {
-          setTrackedIds(new Set(data.map((r) => r.ticket_id)));
-        }
-      });
+    api.get<Array<{ ticket_id: string }>>("/api/tracked-tickets")
+      .then((data) => {
+        setTrackedIds(new Set(data.map((r) => String(r.ticket_id))));
+      })
+      .catch(() => {});
   }, [user]);
 
   // Load config and groups
@@ -194,8 +190,7 @@ const Monitor = () => {
         return;
       }
 
-      const { error } = await supabase.from("tracked_tickets").upsert({
-        user_id: user.id,
+      await api.post("/api/tracked-tickets", {
         ticket_id: ticket.id,
         title: ticket.title,
         status: ticket.status,
@@ -205,17 +200,7 @@ const Monitor = () => {
         has_new_updates: false,
         glpi_created_at: ticket.createdAt,
         glpi_updated_at: ticket.updatedAt,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id,ticket_id" });
-
-      if (error) {
-        toast({
-          title: "Erro ao adicionar chamado",
-          description: error.message,
-          variant: "destructive",
-        });
-        return;
-      }
+      });
 
       setTrackedIds((prev) => new Set(prev).add(id));
       toast({

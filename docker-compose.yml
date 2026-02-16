@@ -1,0 +1,20 @@
+services:
+  backend:
+    build: ./server
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-me}
+      - DB_PATH=/data/db.sqlite
+    volumes:
+      - db-data:/data
+    restart: unless-stopped
+
+  frontend:
+    build: .
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  db-data:

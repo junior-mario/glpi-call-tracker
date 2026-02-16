@@ -6,7 +6,7 @@ import { AddTicketForm } from "@/components/AddTicketForm";
 import { TicketCard } from "@/components/TicketCard";
 import { EmptyState } from "@/components/EmptyState";
 import { toast } from "@/hooks/use-toast";
-import { supabase } from "@/lib/supabase";
+import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 const POLL_INTERVAL = 10 * 60 * 1000; // 10 minutes
@@ -45,49 +45,44 @@ const Index = () => {
     if (!user) return;
     setIsLoadingTickets(true);
 
-    const { data, error } = await supabase
-      .from("tracked_tickets")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+    try {
+      const data = await api.get<Array<Record<string, unknown>>>("/api/tracked-tickets");
 
-    if (error) {
+      const dbTickets: Ticket[] = (data ?? []).map((row) => ({
+        id: String(row.ticket_id),
+        title: String(row.title || ""),
+        status: String(row.status || "new") as Ticket["status"],
+        priority: String(row.priority || "medium") as Ticket["priority"],
+        assignee: String(row.assignee ?? "Não atribuído"),
+        requester: String(row.requester ?? ""),
+        createdAt: String(row.glpi_created_at ?? row.created_at),
+        updatedAt: String(row.glpi_updated_at ?? row.updated_at),
+        hasNewUpdates: Boolean(row.has_new_updates),
+        updates: [],
+      }));
+
+      setTickets(dbTickets);
+      setIsLoadingTickets(false);
+
+      // Re-fetch full data from GLPI API in background to get updates/timeline
+      if (!getGLPIConfig() || dbTickets.length === 0) return;
+
+      const refreshed = await Promise.all(
+        dbTickets.map(async (t) => {
+          try {
+            const fresh = await fetchGLPITicket(t.id);
+            return fresh ? { ...fresh, hasNewUpdates: t.hasNewUpdates } : t;
+          } catch {
+            return t;
+          }
+        })
+      );
+
+      setTickets(refreshed);
+    } catch (error) {
       console.error("Erro ao carregar chamados:", error);
       setIsLoadingTickets(false);
-      return;
     }
-
-    const dbTickets: Ticket[] = (data ?? []).map((row) => ({
-      id: row.ticket_id,
-      title: row.title,
-      status: row.status as Ticket["status"],
-      priority: row.priority as Ticket["priority"],
-      assignee: row.assignee ?? "Não atribuído",
-      requester: row.requester ?? "",
-      createdAt: row.glpi_created_at ?? row.created_at,
-      updatedAt: row.glpi_updated_at ?? row.updated_at,
-      hasNewUpdates: row.has_new_updates ?? false,
-      updates: [],
-    }));
-
-    setTickets(dbTickets);
-    setIsLoadingTickets(false);
-
-    // Re-fetch full data from GLPI API in background to get updates/timeline
-    if (!getGLPIConfig() || dbTickets.length === 0) return;
-
-    const refreshed = await Promise.all(
-      dbTickets.map(async (t) => {
-        try {
-          const fresh = await fetchGLPITicket(t.id);
-          return fresh ? { ...fresh, hasNewUpdates: t.hasNewUpdates } : t;
-        } catch {
-          return t;
-        }
-      })
-    );
-
-    setTickets(refreshed);
   }, [user]);
 
   // Poll tickets every 10 minutes to detect new updates
@@ -114,18 +109,13 @@ const Index = () => {
         if (hasNew) {
           notifyList.push(ticket);
           // Persist has_new_updates in DB
-          await supabase
-            .from("tracked_tickets")
-            .update({
-              has_new_updates: true,
-              status: ticket.status,
-              priority: ticket.priority,
-              assignee: ticket.assignee,
-              glpi_updated_at: ticket.updatedAt,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("user_id", user.id)
-            .eq("ticket_id", ticket.id);
+          await api.patch(`/api/tracked-tickets/${ticket.id}`, {
+            has_new_updates: true,
+            status: ticket.status,
+            priority: ticket.priority,
+            assignee: ticket.assignee,
+            glpi_updated_at: ticket.updatedAt,
+          });
         }
       } catch {
         updatedTickets.push(t);
@@ -197,31 +187,28 @@ const Index = () => {
       }
 
       if (ticket) {
-        const { error } = await supabase.from("tracked_tickets").upsert({
-          user_id: user.id,
-          ticket_id: ticket.id,
-          title: ticket.title,
-          status: ticket.status,
-          priority: ticket.priority,
-          assignee: ticket.assignee,
-          requester: ticket.requester,
-          has_new_updates: false,
-          glpi_created_at: ticket.createdAt,
-          glpi_updated_at: ticket.updatedAt,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id,ticket_id" });
-
-        if (error) {
-          toast({
-            title: "Erro ao salvar chamado",
-            description: error.message,
-            variant: "destructive",
+        try {
+          await api.post("/api/tracked-tickets", {
+            ticket_id: ticket.id,
+            title: ticket.title,
+            status: ticket.status,
+            priority: ticket.priority,
+            assignee: ticket.assignee,
+            requester: ticket.requester,
+            has_new_updates: false,
+            glpi_created_at: ticket.createdAt,
+            glpi_updated_at: ticket.updatedAt,
           });
-        } else {
           setTickets((prev) => [ticket!, ...prev]);
           toast({
             title: "Chamado adicionado",
             description: `O chamado #${ticketId} foi adicionado com sucesso.`,
+          });
+        } catch (err) {
+          toast({
+            title: "Erro ao salvar chamado",
+            description: err instanceof Error ? err.message : "Erro desconhecido",
+            variant: "destructive",
           });
         }
       } else {
@@ -245,36 +232,26 @@ const Index = () => {
   const handleRemoveTicket = async (ticketId: string) => {
     if (!user) return;
 
-    const { error } = await supabase
-      .from("tracked_tickets")
-      .delete()
-      .eq("user_id", user.id)
-      .eq("ticket_id", ticketId);
-
-    if (error) {
+    try {
+      await api.delete(`/api/tracked-tickets/${ticketId}`);
+      setTickets((prev) => prev.filter((t) => t.id !== ticketId));
+      toast({
+        title: "Chamado removido",
+        description: `O chamado #${ticketId} foi removido do acompanhamento.`,
+      });
+    } catch (err) {
       toast({
         title: "Erro ao remover chamado",
-        description: error.message,
+        description: err instanceof Error ? err.message : "Erro desconhecido",
         variant: "destructive",
       });
-      return;
     }
-
-    setTickets((prev) => prev.filter((t) => t.id !== ticketId));
-    toast({
-      title: "Chamado removido",
-      description: `O chamado #${ticketId} foi removido do acompanhamento.`,
-    });
   };
 
   const handleMarkAsRead = async (ticketId: string) => {
     if (!user) return;
 
-    await supabase
-      .from("tracked_tickets")
-      .update({ has_new_updates: false, updated_at: new Date().toISOString() })
-      .eq("user_id", user.id)
-      .eq("ticket_id", ticketId);
+    await api.patch(`/api/tracked-tickets/${ticketId}`, { has_new_updates: false });
 
     setTickets((prev) =>
       prev.map((t) =>
