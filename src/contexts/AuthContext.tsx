@@ -21,7 +21,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Validate existing token on mount
+    // Only validate if a token exists, otherwise skip the API call
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
     api.get<{ user: User }>("/api/auth/me")
       .then(({ user }) => setUser(user))
       .catch(() => setUser(null))
