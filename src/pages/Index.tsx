@@ -436,11 +436,9 @@ const Index = () => {
             return (
               <div
                 key={col.id}
-                className={`flex-shrink-0 min-w-[350px] w-[350px] flex flex-col rounded-lg border bg-muted/30 transition-all ${
+                className={`flex-shrink-0 min-w-[450px] w-[450px] flex flex-col rounded-lg border bg-muted/30 transition-all ${
                   isColDragTarget ? "ring-2 ring-primary/50" : ""
                 }`}
-                draggable
-                onDragStart={(e) => handleColumnDragStart(e, col.id)}
                 onDragOver={(e) => handleColumnDragOver(e, col.id)}
                 onDragLeave={() => setDragOverColId(null)}
                 onDrop={(e) => {
@@ -454,7 +452,13 @@ const Index = () => {
               >
                 {/* Column header */}
                 <div className="flex items-center gap-2 px-3 py-2 border-b">
-                  <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab flex-shrink-0" />
+                  <div
+                    draggable
+                    onDragStart={(e) => handleColumnDragStart(e, col.id)}
+                    className="cursor-grab active:cursor-grabbing flex-shrink-0"
+                  >
+                    <GripVertical className="h-4 w-4 text-muted-foreground" />
+                  </div>
                   {editingColumnId === col.id ? (
                     <input
                       className="flex-1 bg-transparent border-b border-primary text-sm font-semibold outline-none"

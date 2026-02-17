@@ -30,6 +30,7 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead }: TicketCardProps) 
     <Card
       draggable
       onDragStart={(e) => {
+        e.stopPropagation();
         e.dataTransfer.setData("text/plain", ticket.id);
         e.dataTransfer.effectAllowed = "move";
         setIsDragging(true);
