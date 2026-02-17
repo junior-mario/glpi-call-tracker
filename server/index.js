@@ -53,6 +53,13 @@ db.exec(`
     updated_at TEXT DEFAULT (datetime('now')),
     UNIQUE(user_id, ticket_id)
   );
+
+  CREATE TABLE IF NOT EXISTS kanban_columns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT 'Nova coluna',
+    position INTEGER NOT NULL DEFAULT 0
+  );
 `);
 
 // Migration: add display_column to tracked_tickets (idempotent)
@@ -239,6 +246,121 @@ app.delete("/api/tracked-tickets/:ticketId", authenticate, (req, res) => {
   const { ticketId } = req.params;
   db.prepare("DELETE FROM tracked_tickets WHERE user_id = ? AND ticket_id = ?").run(req.userId, ticketId);
   res.json({ success: true });
+});
+
+// ─── Kanban Columns Routes ───────────────────────────────────
+
+app.get("/api/kanban-columns", authenticate, (req, res) => {
+  let columns = db.prepare(
+    "SELECT * FROM kanban_columns WHERE user_id = ? ORDER BY position"
+  ).all(req.userId);
+
+  // Auto-create 2 default columns on first access
+  if (columns.length === 0) {
+    const insert = db.prepare(
+      "INSERT INTO kanban_columns (user_id, title, position) VALUES (?, ?, ?)"
+    );
+    const tx = db.transaction(() => {
+      insert.run(req.userId, "Coluna 1", 0);
+      insert.run(req.userId, "Coluna 2", 1);
+    });
+    tx();
+
+    columns = db.prepare(
+      "SELECT * FROM kanban_columns WHERE user_id = ? ORDER BY position"
+    ).all(req.userId);
+
+    // Remap existing tickets: display_column 0 → col1.id, 1 → col2.id
+    const col1 = columns[0];
+    const col2 = columns[1];
+    if (col1 && col2) {
+      db.prepare(
+        "UPDATE tracked_tickets SET display_column = ? WHERE user_id = ? AND display_column = 0"
+      ).run(col1.id, req.userId);
+      db.prepare(
+        "UPDATE tracked_tickets SET display_column = ? WHERE user_id = ? AND display_column = 1"
+      ).run(col2.id, req.userId);
+    }
+  }
+
+  res.json(columns);
+});
+
+app.post("/api/kanban-columns", authenticate, (req, res) => {
+  const { title } = req.body;
+  const maxPos = db.prepare(
+    "SELECT COALESCE(MAX(position), -1) AS max_pos FROM kanban_columns WHERE user_id = ?"
+  ).get(req.userId);
+  const position = (maxPos?.max_pos ?? -1) + 1;
+
+  const result = db.prepare(
+    "INSERT INTO kanban_columns (user_id, title, position) VALUES (?, ?, ?)"
+  ).run(req.userId, title || "Nova coluna", position);
+
+  const column = db.prepare("SELECT * FROM kanban_columns WHERE id = ?").get(result.lastInsertRowid);
+  res.status(201).json(column);
+});
+
+app.patch("/api/kanban-columns/:id", authenticate, (req, res) => {
+  const { id } = req.params;
+  const { title } = req.body;
+  if (!title) return res.status(400).json({ error: "title é obrigatório" });
+
+  const existing = db.prepare(
+    "SELECT * FROM kanban_columns WHERE id = ? AND user_id = ?"
+  ).get(id, req.userId);
+  if (!existing) return res.status(404).json({ error: "Coluna não encontrada" });
+
+  db.prepare("UPDATE kanban_columns SET title = ? WHERE id = ? AND user_id = ?").run(title, id, req.userId);
+  res.json({ ...existing, title });
+});
+
+app.put("/api/kanban-columns/reorder", authenticate, (req, res) => {
+  const { order } = req.body; // array of column IDs in desired order
+  if (!Array.isArray(order)) return res.status(400).json({ error: "order deve ser um array" });
+
+  const update = db.prepare(
+    "UPDATE kanban_columns SET position = ? WHERE id = ? AND user_id = ?"
+  );
+  const tx = db.transaction(() => {
+    order.forEach((colId, idx) => {
+      update.run(idx, colId, req.userId);
+    });
+  });
+  tx();
+
+  res.json({ success: true });
+});
+
+app.delete("/api/kanban-columns/:id", authenticate, (req, res) => {
+  const { id } = req.params;
+
+  const existing = db.prepare(
+    "SELECT * FROM kanban_columns WHERE id = ? AND user_id = ?"
+  ).get(id, req.userId);
+  if (!existing) return res.status(404).json({ error: "Coluna não encontrada" });
+
+  // Find first available column to move orphaned tickets
+  const fallback = db.prepare(
+    "SELECT id FROM kanban_columns WHERE user_id = ? AND id != ? ORDER BY position LIMIT 1"
+  ).get(req.userId, id);
+
+  if (!fallback) {
+    return res.status(400).json({ error: "Não é possível remover a última coluna" });
+  }
+
+  const tx = db.transaction(() => {
+    // Move tickets to fallback column
+    db.prepare(
+      "UPDATE tracked_tickets SET display_column = ? WHERE user_id = ? AND display_column = ?"
+    ).run(fallback.id, req.userId, Number(id));
+
+    // Delete column
+    db.prepare("DELETE FROM kanban_columns WHERE id = ? AND user_id = ?").run(id, req.userId);
+  });
+  tx();
+
+  res.json({ success: true, movedTo: fallback.id });
 });
 
 // ─── Start ──────────────────────────────────────────────────
