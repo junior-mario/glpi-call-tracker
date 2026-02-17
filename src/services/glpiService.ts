@@ -504,6 +504,7 @@ export async function fetchGLPITicket(ticketId: string): Promise<Ticket | null> 
       createdAt: ticketData.date_creation,
       updatedAt: ticketData.date_mod,
       hasNewUpdates: false,
+      displayColumn: 0,
       updates,
     };
 

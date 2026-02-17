@@ -55,6 +55,13 @@ db.exec(`
   );
 `);
 
+// Migration: add display_column to tracked_tickets (idempotent)
+try {
+  db.exec("ALTER TABLE tracked_tickets ADD COLUMN display_column INTEGER DEFAULT 0");
+} catch (_) {
+  // Column already exists — ignore
+}
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -166,14 +173,14 @@ app.get("/api/tracked-tickets", authenticate, (req, res) => {
 });
 
 app.post("/api/tracked-tickets", authenticate, (req, res) => {
-  const { ticket_id, title, status, priority, assignee, requester, has_new_updates, glpi_created_at, glpi_updated_at } = req.body;
+  const { ticket_id, title, status, priority, assignee, requester, has_new_updates, glpi_created_at, glpi_updated_at, display_column } = req.body;
   if (!ticket_id) {
     return res.status(400).json({ error: "ticket_id é obrigatório" });
   }
 
   db.prepare(`
-    INSERT INTO tracked_tickets (user_id, ticket_id, title, status, priority, assignee, requester, has_new_updates, glpi_created_at, glpi_updated_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    INSERT INTO tracked_tickets (user_id, ticket_id, title, status, priority, assignee, requester, has_new_updates, glpi_created_at, glpi_updated_at, display_column, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(user_id, ticket_id) DO UPDATE SET
       title = excluded.title,
       status = excluded.status,
@@ -183,8 +190,9 @@ app.post("/api/tracked-tickets", authenticate, (req, res) => {
       has_new_updates = excluded.has_new_updates,
       glpi_created_at = excluded.glpi_created_at,
       glpi_updated_at = excluded.glpi_updated_at,
+      display_column = excluded.display_column,
       updated_at = excluded.updated_at
-  `).run(req.userId, ticket_id, title || "", status || "new", priority || "medium", assignee || "Não atribuído", requester || "", has_new_updates ? 1 : 0, glpi_created_at || null, glpi_updated_at || null);
+  `).run(req.userId, ticket_id, title || "", status || "new", priority || "medium", assignee || "Não atribuído", requester || "", has_new_updates ? 1 : 0, glpi_created_at || null, glpi_updated_at || null, display_column || 0);
 
   const row = db.prepare(
     "SELECT * FROM tracked_tickets WHERE user_id = ? AND ticket_id = ?"
@@ -197,7 +205,7 @@ app.patch("/api/tracked-tickets/:ticketId", authenticate, (req, res) => {
   const { ticketId } = req.params;
   const fields = req.body;
 
-  const allowed = ["title", "status", "priority", "assignee", "requester", "has_new_updates", "glpi_created_at", "glpi_updated_at"];
+  const allowed = ["title", "status", "priority", "assignee", "requester", "has_new_updates", "glpi_created_at", "glpi_updated_at", "display_column"];
   const sets = [];
   const values = [];
 

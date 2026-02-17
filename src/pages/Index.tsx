@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, DragEvent } from "react";
 import { Ticket } from "@/types/ticket";
 import { getTicketById } from "@/data/mockTickets";
 import { fetchGLPITicket, loadGLPIConfig, getGLPIConfig } from "@/services/glpiService";
@@ -58,6 +58,7 @@ const Index = () => {
         createdAt: String(row.glpi_created_at ?? row.created_at),
         updatedAt: String(row.glpi_updated_at ?? row.updated_at),
         hasNewUpdates: Boolean(row.has_new_updates),
+        displayColumn: Number(row.display_column) || 0,
         updates: [],
       }));
 
@@ -71,7 +72,7 @@ const Index = () => {
         dbTickets.map(async (t) => {
           try {
             const fresh = await fetchGLPITicket(t.id);
-            return fresh ? { ...fresh, hasNewUpdates: t.hasNewUpdates } : t;
+            return fresh ? { ...fresh, hasNewUpdates: t.hasNewUpdates, displayColumn: t.displayColumn } : t;
           } catch {
             return t;
           }
@@ -199,7 +200,7 @@ const Index = () => {
             glpi_created_at: ticket.createdAt,
             glpi_updated_at: ticket.updatedAt,
           });
-          setTickets((prev) => [ticket!, ...prev]);
+          setTickets((prev) => [{ ...ticket!, displayColumn: 0 }, ...prev]);
           toast({
             title: "Chamado adicionado",
             description: `O chamado #${ticketId} foi adicionado com sucesso.`,
@@ -248,6 +249,41 @@ const Index = () => {
     }
   };
 
+  const [dragOverColumn, setDragOverColumn] = useState<number | null>(null);
+
+  const handleDrop = async (e: DragEvent<HTMLDivElement>, targetColumn: number) => {
+    e.preventDefault();
+    setDragOverColumn(null);
+    const ticketId = e.dataTransfer.getData("text/plain");
+    if (!ticketId) return;
+
+    const ticket = tickets.find((t) => t.id === ticketId);
+    if (!ticket || ticket.displayColumn === targetColumn) return;
+
+    // Optimistic update
+    setTickets((prev) =>
+      prev.map((t) =>
+        t.id === ticketId ? { ...t, displayColumn: targetColumn } : t
+      )
+    );
+
+    try {
+      await api.patch(`/api/tracked-tickets/${ticketId}`, { display_column: targetColumn });
+    } catch {
+      // Revert on failure
+      setTickets((prev) =>
+        prev.map((t) =>
+          t.id === ticketId ? { ...t, displayColumn: ticket.displayColumn } : t
+        )
+      );
+    }
+  };
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
   const handleMarkAsRead = async (ticketId: string) => {
     if (!user) return;
 
@@ -262,7 +298,7 @@ const Index = () => {
 
   if (isLoadingTickets) {
     return (
-      <div className="container max-w-4xl py-6 space-y-6">
+      <div className="container max-w-6xl py-6 space-y-6">
         <AddTicketForm onAddTicket={handleAddTicket} isLoading={isLoading} />
         <div className="flex items-center justify-center py-10 text-muted-foreground">
           Carregando chamados...
@@ -271,22 +307,60 @@ const Index = () => {
     );
   }
 
+  const leftTickets = tickets.filter((t) => t.displayColumn === 0);
+  const rightTickets = tickets.filter((t) => t.displayColumn === 1);
+
   return (
-    <div className="container max-w-4xl py-6 space-y-6">
+    <div className="container max-w-6xl py-6 space-y-6">
       <AddTicketForm onAddTicket={handleAddTicket} isLoading={isLoading} />
 
       {tickets.length === 0 ? (
         <EmptyState />
       ) : (
-        <div className="space-y-4">
-          {tickets.map((ticket) => (
-            <TicketCard
-              key={ticket.id}
-              ticket={ticket}
-              onRemove={handleRemoveTicket}
-              onMarkAsRead={handleMarkAsRead}
-            />
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Left column */}
+          <div
+            className={`space-y-4 min-h-[200px] rounded-lg p-3 transition-colors ${dragOverColumn === 0 ? "bg-accent/50 ring-2 ring-primary/30" : ""}`}
+            onDragOver={(e) => { handleDragOver(e); setDragOverColumn(0); }}
+            onDragLeave={() => setDragOverColumn(null)}
+            onDrop={(e) => handleDrop(e, 0)}
+          >
+            {leftTickets.map((ticket) => (
+              <TicketCard
+                key={ticket.id}
+                ticket={ticket}
+                onRemove={handleRemoveTicket}
+                onMarkAsRead={handleMarkAsRead}
+              />
+            ))}
+            {leftTickets.length === 0 && (
+              <div className="flex items-center justify-center h-32 border-2 border-dashed border-muted-foreground/25 rounded-lg text-sm text-muted-foreground">
+                Arraste chamados para cá
+              </div>
+            )}
+          </div>
+
+          {/* Right column */}
+          <div
+            className={`space-y-4 min-h-[200px] rounded-lg p-3 transition-colors ${dragOverColumn === 1 ? "bg-accent/50 ring-2 ring-primary/30" : ""}`}
+            onDragOver={(e) => { handleDragOver(e); setDragOverColumn(1); }}
+            onDragLeave={() => setDragOverColumn(null)}
+            onDrop={(e) => handleDrop(e, 1)}
+          >
+            {rightTickets.map((ticket) => (
+              <TicketCard
+                key={ticket.id}
+                ticket={ticket}
+                onRemove={handleRemoveTicket}
+                onMarkAsRead={handleMarkAsRead}
+              />
+            ))}
+            {rightTickets.length === 0 && (
+              <div className="flex items-center justify-center h-32 border-2 border-dashed border-muted-foreground/25 rounded-lg text-sm text-muted-foreground">
+                Arraste chamados para cá
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -17,6 +17,7 @@ interface TicketCardProps {
 
 export function TicketCard({ ticket, onRemove, onMarkAsRead }: TicketCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handleToggle = () => {
     setIsExpanded(!isExpanded);
@@ -26,7 +27,16 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead }: TicketCardProps) 
   };
 
   return (
-    <Card className="relative overflow-hidden transition-all duration-300 hover:shadow-lg animate-slide-up">
+    <Card
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", ticket.id);
+        e.dataTransfer.effectAllowed = "move";
+        setIsDragging(true);
+      }}
+      onDragEnd={() => setIsDragging(false)}
+      className={`relative overflow-hidden transition-all duration-300 hover:shadow-lg animate-slide-up cursor-grab active:cursor-grabbing ${isDragging ? "opacity-50" : ""}`}
+    >
       {/* Update indicator */}
       {ticket.hasNewUpdates && (
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 to-red-400" />

@@ -11,6 +11,7 @@ export const mockTicketData: Record<string, Ticket> = {
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-17T14:30:00Z",
     hasNewUpdates: true,
+    displayColumn: 0,
     updates: [
       {
         id: "u1",
@@ -52,6 +53,7 @@ export const mockTicketData: Record<string, Ticket> = {
     createdAt: "2024-01-14T11:30:00Z",
     updatedAt: "2024-01-16T16:00:00Z",
     hasNewUpdates: false,
+    displayColumn: 0,
     updates: [
       {
         id: "u5",
@@ -79,6 +81,7 @@ export const mockTicketData: Record<string, Ticket> = {
     createdAt: "2024-01-10T14:00:00Z",
     updatedAt: "2024-01-12T11:00:00Z",
     hasNewUpdates: true,
+    displayColumn: 0,
     updates: [
       {
         id: "u7",
@@ -113,6 +116,7 @@ export const mockTicketData: Record<string, Ticket> = {
     createdAt: "2024-01-17T08:00:00Z",
     updatedAt: "2024-01-17T08:00:00Z",
     hasNewUpdates: false,
+    displayColumn: 0,
     updates: [
       {
         id: "u10",
