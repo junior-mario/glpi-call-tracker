@@ -3,8 +3,8 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { Timeline } from "./Timeline";
-import { Bell, Clock, User, Users, X, ChevronDown, ChevronUp } from "lucide-react";
-import { format } from "date-fns";
+import { Bell, Clock, User, Users, X, ChevronDown, ChevronUp, Hourglass } from "lucide-react";
+import { format, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,29 @@ interface TicketCardProps {
   ticket: Ticket;
   onRemove: (id: string) => void;
   onMarkAsRead: (id: string) => void;
+}
+
+function IdleBadge({ updatedAt }: { updatedAt: string }) {
+  const days = differenceInDays(new Date(), new Date(updatedAt));
+  const label = days === 0 ? "Hoje" : days === 1 ? "1 dia" : `${days}d`;
+  const style =
+    days <= 1
+      ? "bg-emerald-100 text-emerald-700"
+      : days <= 4
+      ? "bg-yellow-100 text-yellow-800"
+      : days <= 9
+      ? "bg-orange-100 text-orange-700"
+      : "bg-red-100 text-red-700";
+
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded ${style}`}
+      title={`${days === 0 ? "Atualizado hoje" : `${days} dia${days > 1 ? "s" : ""} sem interação`}`}
+    >
+      <Hourglass className="h-3 w-3" />
+      {label}
+    </span>
+  );
 }
 
 export function TicketCard({ ticket, onRemove, onMarkAsRead }: TicketCardProps) {
@@ -38,9 +61,9 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead }: TicketCardProps) 
       onDragEnd={() => setIsDragging(false)}
       className={`relative overflow-hidden transition-all duration-300 hover:shadow-lg animate-slide-up cursor-grab active:cursor-grabbing ${isDragging ? "opacity-50" : ""}`}
     >
-      {/* Update indicator */}
+      {/* Update indicator — red dot */}
       {ticket.hasNewUpdates && (
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 to-red-400" />
+        <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full animate-pulse z-10" />
       )}
 
       <CardHeader className="pb-3">
@@ -52,6 +75,7 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead }: TicketCardProps) 
               </span>
               <StatusBadge status={ticket.status} />
               <PriorityBadge priority={ticket.priority} />
+              <IdleBadge updatedAt={ticket.updatedAt} />
               {ticket.hasNewUpdates && (
                 <div className="flex items-center gap-1 text-red-500 animate-pulse-slow">
                   <Bell className="h-3.5 w-3.5" />

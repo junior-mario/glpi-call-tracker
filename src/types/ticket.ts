@@ -18,6 +18,7 @@ export interface Ticket {
   createdAt: string;
   updatedAt: string;
   hasNewUpdates: boolean;
+  lastSeenUpdateDate: string | null;
   displayColumn: number;
   updates: TicketUpdate[];
 }

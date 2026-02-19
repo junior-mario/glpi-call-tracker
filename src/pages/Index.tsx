@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, DragEvent } from "react";
-import { Ticket } from "@/types/ticket";
+import { Ticket, TicketUpdate } from "@/types/ticket";
 import { getTicketById } from "@/data/mockTickets";
 import { fetchGLPITicket, loadGLPIConfig, getGLPIConfig } from "@/services/glpiService";
 import { AddTicketForm } from "@/components/AddTicketForm";
@@ -8,7 +8,12 @@ import { EmptyState } from "@/components/EmptyState";
 import { toast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, X, GripVertical } from "lucide-react";
+import { Plus, X, GripVertical, ArrowDownUp } from "lucide-react";
+
+function getLatestUpdateDate(updates: TicketUpdate[]): string | null {
+  if (!updates.length) return null;
+  return updates.reduce((latest, u) => u.date > latest ? u.date : latest, updates[0].date);
+}
 
 const POLL_INTERVAL = 10 * 60 * 1000; // 10 minutes
 
@@ -42,6 +47,7 @@ const Index = () => {
   const [dragOverColumn, setDragOverColumn] = useState<number | null>(null);
   const [editingColumnId, setEditingColumnId] = useState<number | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [columnSortBy, setColumnSortBy] = useState<Record<number, "createdAt" | "updatedAt">>({});
 
   // Keep ref in sync for polling comparisons
   useEffect(() => {
@@ -80,6 +86,7 @@ const Index = () => {
         createdAt: String(row.glpi_created_at ?? row.created_at),
         updatedAt: String(row.glpi_updated_at ?? row.updated_at),
         hasNewUpdates: Boolean(row.has_new_updates),
+        lastSeenUpdateDate: row.last_seen_update_date ? String(row.last_seen_update_date) : null,
         displayColumn: Number(row.display_column) || 0,
         updates: [],
       }));
@@ -94,7 +101,12 @@ const Index = () => {
         dbTickets.map(async (t) => {
           try {
             const fresh = await fetchGLPITicket(t.id);
-            return fresh ? { ...fresh, hasNewUpdates: t.hasNewUpdates, displayColumn: t.displayColumn } : t;
+            if (!fresh) return t;
+            const latestDate = getLatestUpdateDate(fresh.updates);
+            const hasNew = t.lastSeenUpdateDate && latestDate
+              ? latestDate > t.lastSeenUpdateDate
+              : t.hasNewUpdates;
+            return { ...fresh, hasNewUpdates: !!hasNew, lastSeenUpdateDate: t.lastSeenUpdateDate, displayColumn: t.displayColumn };
           } catch {
             return t;
           }
@@ -125,11 +137,14 @@ const Index = () => {
           continue;
         }
 
-        const hasNew = fresh.updatedAt !== t.updatedAt;
-        const ticket = { ...fresh, hasNewUpdates: hasNew || t.hasNewUpdates };
+        const latestDate = getLatestUpdateDate(fresh.updates);
+        const hasNew = t.lastSeenUpdateDate && latestDate
+          ? latestDate > t.lastSeenUpdateDate
+          : t.hasNewUpdates;
+        const ticket = { ...fresh, hasNewUpdates: !!hasNew, lastSeenUpdateDate: t.lastSeenUpdateDate, displayColumn: t.displayColumn };
         updatedTickets.push(ticket);
 
-        if (hasNew) {
+        if (hasNew && !t.hasNewUpdates) {
           notifyList.push(ticket);
           // Persist has_new_updates in DB
           await api.patch(`/api/tracked-tickets/${ticket.id}`, {
@@ -216,6 +231,7 @@ const Index = () => {
         const displayColumn = firstCol ? firstCol.id : 0;
 
         try {
+          const initialSeenDate = getLatestUpdateDate(ticket.updates);
           await api.post("/api/tracked-tickets", {
             ticket_id: ticket.id,
             title: ticket.title,
@@ -227,8 +243,9 @@ const Index = () => {
             glpi_created_at: ticket.createdAt,
             glpi_updated_at: ticket.updatedAt,
             display_column: displayColumn,
+            last_seen_update_date: initialSeenDate,
           });
-          setTickets((prev) => [{ ...ticket!, displayColumn }, ...prev]);
+          setTickets((prev) => [{ ...ticket!, displayColumn, lastSeenUpdateDate: initialSeenDate }, ...prev]);
           toast({
             title: "Chamado adicionado",
             description: `O chamado #${ticketId} foi adicionado com sucesso.`,
@@ -313,11 +330,17 @@ const Index = () => {
   const handleMarkAsRead = async (ticketId: string) => {
     if (!user) return;
 
-    await api.patch(`/api/tracked-tickets/${ticketId}`, { has_new_updates: false });
+    const ticket = tickets.find((t) => t.id === ticketId);
+    const latestDate = ticket ? getLatestUpdateDate(ticket.updates) : null;
+
+    await api.patch(`/api/tracked-tickets/${ticketId}`, {
+      has_new_updates: false,
+      ...(latestDate ? { last_seen_update_date: latestDate } : {}),
+    });
 
     setTickets((prev) =>
       prev.map((t) =>
-        t.id === ticketId ? { ...t, hasNewUpdates: false } : t
+        t.id === ticketId ? { ...t, hasNewUpdates: false, lastSeenUpdateDate: latestDate ?? t.lastSeenUpdateDate } : t
       )
     );
   };
@@ -429,7 +452,10 @@ const Index = () => {
       ) : (
         <div className="flex overflow-x-auto gap-4 pb-4">
           {columns.map((col) => {
-            const colTickets = tickets.filter((t) => t.displayColumn === col.id);
+            const sortKey = columnSortBy[col.id] || "createdAt";
+            const colTickets = tickets
+              .filter((t) => t.displayColumn === col.id)
+              .sort((a, b) => b[sortKey].localeCompare(a[sortKey]));
             const isDropTarget = dragOverColumn === col.id;
             const isColDragTarget = dragOverColId === col.id && draggedColId !== col.id;
 
@@ -484,6 +510,22 @@ const Index = () => {
                     </span>
                   )}
                   <span className="text-xs text-muted-foreground">{colTickets.length}</span>
+                  <div className="flex items-center gap-0.5">
+                    <ArrowDownUp className="h-3 w-3 text-muted-foreground" />
+                    <select
+                      value={columnSortBy[col.id] || "createdAt"}
+                      onChange={(e) =>
+                        setColumnSortBy((prev) => ({
+                          ...prev,
+                          [col.id]: e.target.value as "createdAt" | "updatedAt",
+                        }))
+                      }
+                      className="text-xs bg-transparent border-none outline-none cursor-pointer text-muted-foreground hover:text-foreground"
+                    >
+                      <option value="createdAt">Abertura</option>
+                      <option value="updatedAt">Atualização</option>
+                    </select>
+                  </div>
                   {columns.length > 1 && (
                     <button
                       onClick={() => handleDeleteColumn(col.id)}
