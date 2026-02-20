@@ -1,4 +1,5 @@
 import { ConfigPanel } from "@/components/ConfigPanel";
+import { ContactsPanel } from "@/components/ContactsPanel";
 import { toast } from "@/hooks/use-toast";
 
 const Settings = () => {
@@ -10,8 +11,9 @@ const Settings = () => {
   };
 
   return (
-    <div className="container max-w-2xl py-6">
+    <div className="container max-w-2xl py-6 space-y-6">
       <ConfigPanel onConfigSaved={handleConfigSaved} />
+      <ContactsPanel />
     </div>
   );
 };

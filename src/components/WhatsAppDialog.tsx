@@ -5,10 +5,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Send, Loader2 } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { api } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
+
+interface Contact {
+  id: number;
+  name: string;
+  phone: string;
+}
 
 interface WhatsAppDialogProps {
   open: boolean;
@@ -30,12 +37,29 @@ export function WhatsAppDialog({ open, onOpenChange, tickets }: WhatsAppDialogPr
   const [phone, setPhone] = useState("");
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [selectedContactId, setSelectedContactId] = useState<string>("");
 
   useEffect(() => {
-    if (open && tickets.length > 0) {
-      setMessage(generateMessage(tickets));
+    if (open) {
+      api.get<Contact[]>("/api/whatsapp-contacts").then(setContacts);
+      if (tickets.length > 0) {
+        setMessage(generateMessage(tickets));
+      }
     }
   }, [open, tickets]);
+
+  const handleContactSelect = (value: string) => {
+    setSelectedContactId(value);
+    if (value === "manual") {
+      setPhone("");
+      return;
+    }
+    const contact = contacts.find((c) => String(c.id) === value);
+    if (contact) {
+      setPhone(contact.phone);
+    }
+  };
 
   const handleSend = async () => {
     const cleaned = phone.replace(/\D/g, "");
@@ -73,6 +97,25 @@ export function WhatsAppDialog({ open, onOpenChange, tickets }: WhatsAppDialogPr
         </DialogHeader>
 
         <div className="space-y-4">
+          {contacts.length > 0 && (
+            <div className="space-y-2">
+              <Label>Contato da agenda</Label>
+              <Select value={selectedContactId} onValueChange={handleContactSelect}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um contato..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Digitar manualmente</SelectItem>
+                  {contacts.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name} ({c.phone})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="whatsapp-phone">Telefone (com DDD e código do país)</Label>
             <Input

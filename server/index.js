@@ -61,6 +61,14 @@ db.exec(`
     title TEXT NOT NULL DEFAULT 'Nova coluna',
     position INTEGER NOT NULL DEFAULT 0
   );
+
+  CREATE TABLE IF NOT EXISTS whatsapp_contacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
 `);
 
 // Migration: add display_column to tracked_tickets (idempotent)
@@ -370,6 +378,64 @@ app.delete("/api/kanban-columns/:id", authenticate, (req, res) => {
   tx();
 
   res.json({ success: true, movedTo: fallback.id });
+});
+
+// ─── WhatsApp Contacts Routes ────────────────────────────────
+
+app.get("/api/whatsapp-contacts", authenticate, (req, res) => {
+  const rows = db.prepare(
+    "SELECT * FROM whatsapp_contacts WHERE user_id = ? ORDER BY name"
+  ).all(req.userId);
+  res.json(rows);
+});
+
+app.post("/api/whatsapp-contacts", authenticate, (req, res) => {
+  const { name, phone } = req.body;
+  if (!name || !phone) {
+    return res.status(400).json({ error: "Nome e telefone são obrigatórios" });
+  }
+
+  const result = db.prepare(
+    "INSERT INTO whatsapp_contacts (user_id, name, phone) VALUES (?, ?, ?)"
+  ).run(req.userId, name.trim(), phone.trim());
+
+  const row = db.prepare("SELECT * FROM whatsapp_contacts WHERE id = ?").get(result.lastInsertRowid);
+  res.status(201).json(row);
+});
+
+app.patch("/api/whatsapp-contacts/:id", authenticate, (req, res) => {
+  const { id } = req.params;
+  const { name, phone } = req.body;
+
+  const existing = db.prepare(
+    "SELECT * FROM whatsapp_contacts WHERE id = ? AND user_id = ?"
+  ).get(id, req.userId);
+  if (!existing) return res.status(404).json({ error: "Contato não encontrado" });
+
+  const newName = name !== undefined ? name.trim() : existing.name;
+  const newPhone = phone !== undefined ? phone.trim() : existing.phone;
+
+  if (!newName || !newPhone) {
+    return res.status(400).json({ error: "Nome e telefone não podem ficar vazios" });
+  }
+
+  db.prepare(
+    "UPDATE whatsapp_contacts SET name = ?, phone = ? WHERE id = ? AND user_id = ?"
+  ).run(newName, newPhone, id, req.userId);
+
+  res.json({ ...existing, name: newName, phone: newPhone });
+});
+
+app.delete("/api/whatsapp-contacts/:id", authenticate, (req, res) => {
+  const { id } = req.params;
+
+  const existing = db.prepare(
+    "SELECT * FROM whatsapp_contacts WHERE id = ? AND user_id = ?"
+  ).get(id, req.userId);
+  if (!existing) return res.status(404).json({ error: "Contato não encontrado" });
+
+  db.prepare("DELETE FROM whatsapp_contacts WHERE id = ? AND user_id = ?").run(id, req.userId);
+  res.json({ success: true });
 });
 
 // ─── WhatsApp (WhAPI) Route ──────────────────────────────────
