@@ -3,16 +3,20 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { Timeline } from "./Timeline";
-import { Bell, Clock, User, Users, X, ChevronDown, ChevronUp, Hourglass } from "lucide-react";
+import { Bell, Clock, User, Users, X, ChevronDown, ChevronUp, Hourglass, MessageCircle } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface TicketCardProps {
   ticket: Ticket;
   onRemove: (id: string) => void;
   onMarkAsRead: (id: string) => void;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
+  onCobrar?: (ticket: Ticket) => void;
 }
 
 function IdleBadge({ updatedAt }: { updatedAt: string }) {
@@ -38,7 +42,7 @@ function IdleBadge({ updatedAt }: { updatedAt: string }) {
   );
 }
 
-export function TicketCard({ ticket, onRemove, onMarkAsRead }: TicketCardProps) {
+export function TicketCard({ ticket, onRemove, onMarkAsRead, isSelected, onToggleSelect, onCobrar }: TicketCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -70,6 +74,14 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead }: TicketCardProps) 
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
+              {onToggleSelect && (
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => onToggleSelect(ticket.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                />
+              )}
               <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
                 #{ticket.id}
               </span>
@@ -117,12 +129,12 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead }: TicketCardProps) 
         </div>
       </CardHeader>
 
-      {/* Expand/Collapse toggle */}
-      <div className="px-6 pb-2">
+      {/* Expand/Collapse toggle + Cobrar */}
+      <div className="px-6 pb-2 flex gap-2">
         <Button
           variant="ghost"
           size="sm"
-          className="w-full text-muted-foreground hover:text-foreground"
+          className="flex-1 text-muted-foreground hover:text-foreground"
           onClick={handleToggle}
         >
           {isExpanded ? (
@@ -137,6 +149,17 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead }: TicketCardProps) 
             </>
           )}
         </Button>
+        {onCobrar && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-green-600 hover:text-green-700 hover:bg-green-50"
+            onClick={(e) => { e.stopPropagation(); onCobrar(ticket); }}
+          >
+            <MessageCircle className="h-4 w-4 mr-1" />
+            Cobrar
+          </Button>
+        )}
       </div>
 
       {/* Timeline */}

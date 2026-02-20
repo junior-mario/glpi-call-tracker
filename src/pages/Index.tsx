@@ -4,11 +4,12 @@ import { getTicketById } from "@/data/mockTickets";
 import { fetchGLPITicket, loadGLPIConfig, getGLPIConfig } from "@/services/glpiService";
 import { AddTicketForm } from "@/components/AddTicketForm";
 import { TicketCard } from "@/components/TicketCard";
+import { WhatsAppDialog } from "@/components/WhatsAppDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { toast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, X, GripVertical, ArrowDownUp } from "lucide-react";
+import { Plus, X, GripVertical, ArrowDownUp, MessageCircle } from "lucide-react";
 
 function getLatestUpdateDate(updates: TicketUpdate[]): string | null {
   if (!updates.length) return null;
@@ -48,6 +49,9 @@ const Index = () => {
   const [editingColumnId, setEditingColumnId] = useState<number | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [columnSortBy, setColumnSortBy] = useState<Record<number, "createdAt" | "updatedAt">>({});
+  const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(new Set());
+  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
+  const [whatsappTickets, setWhatsappTickets] = useState<Ticket[]>([]);
 
   // Keep ref in sync for polling comparisons
   useEffect(() => {
@@ -281,6 +285,7 @@ const Index = () => {
     try {
       await api.delete(`/api/tracked-tickets/${ticketId}`);
       setTickets((prev) => prev.filter((t) => t.id !== ticketId));
+      setSelectedTicketIds((prev) => { const next = new Set(prev); next.delete(ticketId); return next; });
       toast({
         title: "Chamado removido",
         description: `O chamado #${ticketId} foi removido do acompanhamento.`,
@@ -343,6 +348,27 @@ const Index = () => {
         t.id === ticketId ? { ...t, hasNewUpdates: false, lastSeenUpdateDate: latestDate ?? t.lastSeenUpdateDate } : t
       )
     );
+  };
+
+  const handleToggleSelect = (ticketId: string) => {
+    setSelectedTicketIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(ticketId)) next.delete(ticketId);
+      else next.add(ticketId);
+      return next;
+    });
+  };
+
+  const handleCobrarSingle = (ticket: Ticket) => {
+    setWhatsappTickets([ticket]);
+    setWhatsappDialogOpen(true);
+  };
+
+  const handleCobrarSelected = () => {
+    const selected = tickets.filter((t) => selectedTicketIds.has(t.id));
+    if (selected.length === 0) return;
+    setWhatsappTickets(selected);
+    setWhatsappDialogOpen(true);
   };
 
   const handleAddColumn = async () => {
@@ -560,6 +586,9 @@ const Index = () => {
                       ticket={ticket}
                       onRemove={handleRemoveTicket}
                       onMarkAsRead={handleMarkAsRead}
+                      isSelected={selectedTicketIds.has(ticket.id)}
+                      onToggleSelect={handleToggleSelect}
+                      onCobrar={handleCobrarSingle}
                     />
                   ))}
                   {colTickets.length === 0 && (
@@ -584,6 +613,35 @@ const Index = () => {
           </div>
         </div>
       )}
+
+      {/* Floating selection bar */}
+      {selectedTicketIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-background border shadow-lg rounded-full px-5 py-3">
+          <span className="text-sm font-medium">
+            {selectedTicketIds.size} chamado{selectedTicketIds.size !== 1 ? "s" : ""} selecionado{selectedTicketIds.size !== 1 ? "s" : ""}
+          </span>
+          <button
+            onClick={handleCobrarSelected}
+            className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
+          >
+            <MessageCircle className="h-4 w-4" />
+            Cobrar selecionados
+          </button>
+          <button
+            onClick={() => setSelectedTicketIds(new Set())}
+            className="p-1.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title="Limpar seleção"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      <WhatsAppDialog
+        open={whatsappDialogOpen}
+        onOpenChange={setWhatsappDialogOpen}
+        tickets={whatsappTickets}
+      />
     </div>
   );
 };

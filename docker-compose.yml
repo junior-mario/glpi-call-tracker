@@ -3,6 +3,7 @@ services:
     build: ./server
     environment:
       - JWT_SECRET=${JWT_SECRET:-dev-secret-change-me}
+      - WHAPI_TOKEN=${WHAPI_TOKEN:-}
       - DB_PATH=/data/db.sqlite
     volumes:
       - db-data:/data

@@ -8,6 +8,7 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
+const WHAPI_TOKEN = process.env.WHAPI_TOKEN || "";
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, "data", "db.sqlite");
 
 // Ensure data directory exists
@@ -369,6 +370,41 @@ app.delete("/api/kanban-columns/:id", authenticate, (req, res) => {
   tx();
 
   res.json({ success: true, movedTo: fallback.id });
+});
+
+// ─── WhatsApp (WhAPI) Route ──────────────────────────────────
+
+app.post("/api/whatsapp/send", authenticate, async (req, res) => {
+  if (!WHAPI_TOKEN) {
+    return res.status(503).json({ error: "WHAPI_TOKEN não configurado no servidor" });
+  }
+
+  const { to, body } = req.body;
+  if (!to || !body) {
+    return res.status(400).json({ error: "Campos 'to' e 'body' são obrigatórios" });
+  }
+
+  try {
+    const response = await fetch("https://gate.whapi.cloud/messages/text", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${WHAPI_TOKEN}`,
+      },
+      body: JSON.stringify({ to, body }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: data.message || "Erro ao enviar mensagem", details: data });
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error("Erro ao enviar WhatsApp:", err);
+    res.status(500).json({ error: "Erro interno ao enviar mensagem" });
+  }
 });
 
 // ─── Start ──────────────────────────────────────────────────
