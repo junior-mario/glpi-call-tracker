@@ -93,6 +93,7 @@ const Monitor = () => {
   const [technicianFilter, setTechnicianFilter] = useState<string>(cached?.technician ?? "all");
   const [tagFilter, setTagFilter] = useState<string>(cached?.tag ?? "all");
   const [trackedIds, setTrackedIds] = useState<Set<string>>(new Set());
+  const [defaultColumnId, setDefaultColumnId] = useState<number>(0);
   const [configLoaded, setConfigLoaded] = useState(false);
   const [hasConfig, setHasConfig] = useState(false);
 
@@ -109,13 +110,21 @@ const Monitor = () => {
     });
   }, [selectedGroup, dateFrom, dateTo, statusFilter, priorityFilter, technicianFilter, tagFilter]);
 
-  // Load tracked IDs from backend
+  // Load tracked IDs and default column from backend
   useEffect(() => {
     if (!user) return;
 
     api.get<Array<{ ticket_id: string }>>("/api/tracked-tickets")
       .then((data) => {
         setTrackedIds(new Set(data.map((r) => String(r.ticket_id))));
+      })
+      .catch(() => {});
+
+    api.get<Array<{ id: number }>>("/api/kanban-columns")
+      .then((cols) => {
+        if (cols && cols.length > 0) {
+          setDefaultColumnId(cols[0].id);
+        }
       })
       .catch(() => {});
   }, [user]);
@@ -200,6 +209,7 @@ const Monitor = () => {
         has_new_updates: false,
         glpi_created_at: ticket.createdAt,
         glpi_updated_at: ticket.updatedAt,
+        display_column: defaultColumnId,
       });
 
       setTrackedIds((prev) => new Set(prev).add(id));
