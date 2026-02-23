@@ -628,7 +628,6 @@ const Index = () => {
                       isSelected={selectedTicketIds.has(ticket.id)}
                       onToggleSelect={handleToggleSelect}
                       onCobrar={handleCobrarSingle}
-                      onCopyText={handleCopyTextSingle}
                     />
                   ))}
                   {colTickets.length === 0 && (
