@@ -189,6 +189,19 @@ app.delete("/api/glpi-config", authenticate, (req, res) => {
 // ─── Tracked Tickets Routes ─────────────────────────────────
 
 app.get("/api/tracked-tickets", authenticate, (req, res) => {
+  // Fix orphaned tickets whose display_column doesn't match any existing column
+  const validColIds = db.prepare(
+    "SELECT id FROM kanban_columns WHERE user_id = ?"
+  ).all(req.userId).map((c) => c.id);
+
+  if (validColIds.length > 0) {
+    const firstColId = validColIds[0];
+    const placeholders = validColIds.map(() => "?").join(",");
+    db.prepare(
+      `UPDATE tracked_tickets SET display_column = ? WHERE user_id = ? AND display_column NOT IN (${placeholders})`
+    ).run(firstColId, req.userId, ...validColIds);
+  }
+
   const rows = db.prepare(
     "SELECT * FROM tracked_tickets WHERE user_id = ? ORDER BY created_at DESC"
   ).all(req.userId);
@@ -199,6 +212,15 @@ app.post("/api/tracked-tickets", authenticate, (req, res) => {
   const { ticket_id, title, status, priority, assignee, requester, has_new_updates, glpi_created_at, glpi_updated_at, display_column, last_seen_update_date } = req.body;
   if (!ticket_id) {
     return res.status(400).json({ error: "ticket_id é obrigatório" });
+  }
+
+  // Resolve display_column: use provided value, or fall back to user's first column
+  let resolvedColumn = display_column;
+  if (!resolvedColumn) {
+    const firstCol = db.prepare(
+      "SELECT id FROM kanban_columns WHERE user_id = ? ORDER BY position LIMIT 1"
+    ).get(req.userId);
+    resolvedColumn = firstCol ? firstCol.id : 0;
   }
 
   db.prepare(`
@@ -216,7 +238,7 @@ app.post("/api/tracked-tickets", authenticate, (req, res) => {
       display_column = excluded.display_column,
       last_seen_update_date = excluded.last_seen_update_date,
       updated_at = excluded.updated_at
-  `).run(req.userId, ticket_id, title || "", status || "new", priority || "medium", assignee || "Não atribuído", requester || "", has_new_updates ? 1 : 0, glpi_created_at || null, glpi_updated_at || null, display_column || 0, last_seen_update_date || null);
+  `).run(req.userId, ticket_id, title || "", status || "new", priority || "medium", assignee || "Não atribuído", requester || "", has_new_updates ? 1 : 0, glpi_created_at || null, glpi_updated_at || null, resolvedColumn, last_seen_update_date || null);
 
   const row = db.prepare(
     "SELECT * FROM tracked_tickets WHERE user_id = ? AND ticket_id = ?"
