@@ -5,11 +5,12 @@ import { fetchGLPITicket, loadGLPIConfig, getGLPIConfig } from "@/services/glpiS
 import { AddTicketForm } from "@/components/AddTicketForm";
 import { TicketCard } from "@/components/TicketCard";
 import { WhatsAppDialog } from "@/components/WhatsAppDialog";
+import { CopyMessageDialog } from "@/components/CopyMessageDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { toast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, X, GripVertical, ArrowDownUp, ArrowDown, ArrowUp, MessageCircle } from "lucide-react";
+import { Plus, X, GripVertical, ArrowDownUp, ArrowDown, ArrowUp, MessageCircle, ClipboardCopy } from "lucide-react";
 
 function getLatestUpdateDate(updates: TicketUpdate[]): string | null {
   if (!updates.length) return null;
@@ -53,6 +54,8 @@ const Index = () => {
   const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(new Set());
   const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
   const [whatsappTickets, setWhatsappTickets] = useState<Ticket[]>([]);
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [copyDialogTickets, setCopyDialogTickets] = useState<Ticket[]>([]);
 
   // Keep ref in sync for polling comparisons
   useEffect(() => {
@@ -365,11 +368,23 @@ const Index = () => {
     setWhatsappDialogOpen(true);
   };
 
+  const handleCopyTextSingle = (ticket: Ticket) => {
+    setCopyDialogTickets([ticket]);
+    setCopyDialogOpen(true);
+  };
+
   const handleCobrarSelected = () => {
     const selected = tickets.filter((t) => selectedTicketIds.has(t.id));
     if (selected.length === 0) return;
     setWhatsappTickets(selected);
     setWhatsappDialogOpen(true);
+  };
+
+  const handleCopySelected = () => {
+    const selected = tickets.filter((t) => selectedTicketIds.has(t.id));
+    if (selected.length === 0) return;
+    setCopyDialogTickets(selected);
+    setCopyDialogOpen(true);
   };
 
   const handleAddColumn = async () => {
@@ -613,6 +628,7 @@ const Index = () => {
                       isSelected={selectedTicketIds.has(ticket.id)}
                       onToggleSelect={handleToggleSelect}
                       onCobrar={handleCobrarSingle}
+                      onCopyText={handleCopyTextSingle}
                     />
                   ))}
                   {colTickets.length === 0 && (
@@ -649,7 +665,14 @@ const Index = () => {
             className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
           >
             <MessageCircle className="h-4 w-4" />
-            Cobrar selecionados
+            WhatsApp
+          </button>
+          <button
+            onClick={handleCopySelected}
+            className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            <ClipboardCopy className="h-4 w-4" />
+            Copiar texto
           </button>
           <button
             onClick={() => setSelectedTicketIds(new Set())}
@@ -665,6 +688,11 @@ const Index = () => {
         open={whatsappDialogOpen}
         onOpenChange={setWhatsappDialogOpen}
         tickets={whatsappTickets}
+      />
+      <CopyMessageDialog
+        open={copyDialogOpen}
+        onOpenChange={setCopyDialogOpen}
+        tickets={copyDialogTickets}
       />
     </div>
   );

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { Timeline } from "./Timeline";
-import { Bell, Clock, User, Users, X, ChevronDown, ChevronUp, Hourglass, MessageCircle } from "lucide-react";
+import { Bell, Clock, User, Users, X, ChevronDown, ChevronUp, Hourglass, MessageCircle, ClipboardCopy } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useState } from "react";
@@ -17,6 +17,7 @@ interface TicketCardProps {
   isSelected?: boolean;
   onToggleSelect?: (id: string) => void;
   onCobrar?: (ticket: Ticket) => void;
+  onCopyText?: (ticket: Ticket) => void;
 }
 
 function IdleBadge({ updatedAt }: { updatedAt: string }) {
@@ -42,7 +43,7 @@ function IdleBadge({ updatedAt }: { updatedAt: string }) {
   );
 }
 
-export function TicketCard({ ticket, onRemove, onMarkAsRead, isSelected, onToggleSelect, onCobrar }: TicketCardProps) {
+export function TicketCard({ ticket, onRemove, onMarkAsRead, isSelected, onToggleSelect, onCobrar, onCopyText }: TicketCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -165,7 +166,18 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead, isSelected, onToggl
             onClick={(e) => { e.stopPropagation(); onCobrar(ticket); }}
           >
             <MessageCircle className="h-4 w-4 mr-1" />
-            Cobrar
+            WhatsApp
+          </Button>
+        )}
+        {onCopyText && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            onClick={(e) => { e.stopPropagation(); onCopyText(ticket); }}
+          >
+            <ClipboardCopy className="h-4 w-4 mr-1" />
+            Copiar
           </Button>
         )}
       </div>
