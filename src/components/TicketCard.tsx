@@ -82,9 +82,17 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead, isSelected, onToggl
                   onPointerDown={(e) => e.stopPropagation()}
                 />
               )}
-              <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
+              <a
+                href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${ticket.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded hover:opacity-80 no-underline"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                draggable={false}
+              >
                 #{ticket.id}
-              </span>
+              </a>
               <StatusBadge status={ticket.status} />
               <PriorityBadge priority={ticket.priority} />
               <IdleBadge updatedAt={ticket.updatedAt} />
