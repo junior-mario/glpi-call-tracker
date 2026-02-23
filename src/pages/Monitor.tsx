@@ -281,7 +281,7 @@ const Monitor = () => {
 
   if (!configLoaded) {
     return (
-      <div className="container max-w-5xl py-6">
+      <div className="container py-6 mx-auto max-w-[1164px]">
         <Card>
           <CardContent className="py-10 flex items-center justify-center gap-2 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
@@ -294,7 +294,7 @@ const Monitor = () => {
 
   if (!hasConfig) {
     return (
-      <div className="container max-w-5xl py-6">
+      <div className="container py-6 mx-auto max-w-[1164px]">
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
             Configure a API GLPI em <strong>Configurações</strong> para usar o monitoramento.
@@ -305,7 +305,7 @@ const Monitor = () => {
   }
 
   return (
-    <div className="container max-w-5xl py-6 space-y-6">
+    <div className="container py-6 mx-auto max-w-[1164px] space-y-6">
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
