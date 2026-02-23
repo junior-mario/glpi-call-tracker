@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { toast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, X, GripVertical, ArrowDownUp, MessageCircle } from "lucide-react";
+import { Plus, X, GripVertical, ArrowDownUp, ArrowDown, ArrowUp, MessageCircle } from "lucide-react";
 
 function getLatestUpdateDate(updates: TicketUpdate[]): string | null {
   if (!updates.length) return null;
@@ -49,6 +49,7 @@ const Index = () => {
   const [editingColumnId, setEditingColumnId] = useState<number | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [columnSortBy, setColumnSortBy] = useState<Record<number, "createdAt" | "updatedAt">>({});
+  const [columnSortDir, setColumnSortDir] = useState<Record<number, "desc" | "asc">>({});
   const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(new Set());
   const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
   const [whatsappTickets, setWhatsappTickets] = useState<Ticket[]>([]);
@@ -479,9 +480,13 @@ const Index = () => {
         <div className="flex overflow-x-auto gap-4 pb-4">
           {columns.map((col) => {
             const sortKey = columnSortBy[col.id] || "createdAt";
+            const sortDir = columnSortDir[col.id] || "desc";
             const colTickets = tickets
               .filter((t) => t.displayColumn === col.id)
-              .sort((a, b) => b[sortKey].localeCompare(a[sortKey]));
+              .sort((a, b) => sortDir === "desc"
+                ? b[sortKey].localeCompare(a[sortKey])
+                : a[sortKey].localeCompare(b[sortKey])
+              );
             const isDropTarget = dragOverColumn === col.id;
             const isColDragTarget = dragOverColId === col.id && draggedColId !== col.id;
 
@@ -537,7 +542,6 @@ const Index = () => {
                   )}
                   <span className="text-xs text-muted-foreground">{colTickets.length}</span>
                   <div className="flex items-center gap-0.5">
-                    <ArrowDownUp className="h-3 w-3 text-muted-foreground" />
                     <select
                       value={columnSortBy[col.id] || "createdAt"}
                       onChange={(e) =>
@@ -551,6 +555,26 @@ const Index = () => {
                       <option value="createdAt">Abertura</option>
                       <option value="updatedAt">Atualização</option>
                     </select>
+                    <button
+                      onClick={() =>
+                        setColumnSortDir((prev) => ({
+                          ...prev,
+                          [col.id]: (prev[col.id] || "desc") === "desc" ? "asc" : "desc",
+                        }))
+                      }
+                      className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      title={
+                        (columnSortDir[col.id] || "desc") === "desc"
+                          ? "Mais recente primeiro"
+                          : "Mais antigo primeiro"
+                      }
+                    >
+                      {(columnSortDir[col.id] || "desc") === "desc" ? (
+                        <ArrowDown className="h-3 w-3" />
+                      ) : (
+                        <ArrowUp className="h-3 w-3" />
+                      )}
+                    </button>
                   </div>
                   {columns.length > 1 && (
                     <button
