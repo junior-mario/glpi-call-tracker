@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Search, Loader2, Plus, Check } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -51,6 +52,8 @@ const FILTERS_CACHE_KEY = "glpi-monitor-filters";
 
 interface CachedFilters {
   group: string;
+  dateMode: "relative" | "custom";
+  relativeDays: number;
   dateFrom: string | null;
   dateTo: string | null;
   status: string;
@@ -77,6 +80,9 @@ const Monitor = () => {
   const cached = loadCachedFilters();
   const [groups, setGroups] = useState<GLPIGroupResponse[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>(cached?.group ?? "");
+  const [dateMode, setDateMode] = useState<"relative" | "custom">(cached?.dateMode ?? "relative");
+  const [relativeDays, setRelativeDays] = useState<number>(cached?.relativeDays ?? 7);
+  const [customDaysInput, setCustomDaysInput] = useState<string>("");
   const [dateFrom, setDateFrom] = useState<Date | undefined>(
     cached?.dateFrom ? new Date(cached.dateFrom) : undefined
   );
@@ -101,6 +107,8 @@ const Monitor = () => {
   useEffect(() => {
     saveCachedFilters({
       group: selectedGroup,
+      dateMode,
+      relativeDays,
       dateFrom: dateFrom ? dateFrom.toISOString() : null,
       dateTo: dateTo ? dateTo.toISOString() : null,
       status: statusFilter,
@@ -108,7 +116,7 @@ const Monitor = () => {
       technician: technicianFilter,
       tag: tagFilter,
     });
-  }, [selectedGroup, dateFrom, dateTo, statusFilter, priorityFilter, technicianFilter, tagFilter]);
+  }, [selectedGroup, dateMode, relativeDays, dateFrom, dateTo, statusFilter, priorityFilter, technicianFilter, tagFilter]);
 
   // Load tracked IDs and default column from backend
   useEffect(() => {
@@ -152,21 +160,37 @@ const Monitor = () => {
   }, []);
 
   const handleSearch = async () => {
-    if (!dateFrom || !dateTo) {
-      toast({
-        title: "Preencha o período",
-        description: "Selecione as datas de início e fim.",
-        variant: "destructive",
-      });
-      return;
+    let from: string;
+    let to: string;
+
+    if (dateMode === "relative") {
+      if (!relativeDays || relativeDays <= 0) {
+        toast({
+          title: "Período inválido",
+          description: "Informe uma quantidade de dias válida.",
+          variant: "destructive",
+        });
+        return;
+      }
+      to = format(new Date(), "yyyy-MM-dd");
+      from = format(subDays(new Date(), relativeDays), "yyyy-MM-dd");
+    } else {
+      if (!dateFrom || !dateTo) {
+        toast({
+          title: "Preencha o período",
+          description: "Selecione as datas de início e fim.",
+          variant: "destructive",
+        });
+        return;
+      }
+      from = format(dateFrom, "yyyy-MM-dd");
+      to = format(dateTo, "yyyy-MM-dd");
     }
 
     setIsSearching(true);
     setHasSearched(true);
 
     try {
-      const from = format(dateFrom, "yyyy-MM-dd");
-      const to = format(dateTo, "yyyy-MM-dd");
       const groupId = selectedGroup && selectedGroup !== "all" ? Number(selectedGroup) : null;
       const result = await searchTicketsByGroup(groupId, from, to);
       setTickets(result);
@@ -310,61 +334,109 @@ const Monitor = () => {
               </Select>
             </div>
 
-            {/* Date From */}
+            {/* Date mode selector */}
             <div className="flex flex-col gap-1.5">
-              <Label>De</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-[160px] justify-start text-left font-normal",
-                      !dateFrom && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "Início"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={dateFrom}
-                    onSelect={setDateFrom}
-                    locale={ptBR}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <Label>Período</Label>
+              <Select value={dateMode} onValueChange={(v) => setDateMode(v as "relative" | "custom")}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="relative">Últimos dias</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Date To */}
-            <div className="flex flex-col gap-1.5">
-              <Label>Até</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-[160px] justify-start text-left font-normal",
-                      !dateTo && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateTo ? format(dateTo, "dd/MM/yyyy") : "Fim"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={dateTo}
-                    onSelect={setDateTo}
-                    locale={ptBR}
-                    initialFocus
+            {dateMode === "relative" ? (
+              <div className="flex flex-col gap-1.5">
+                <Label>Dias</Label>
+                <div className="flex items-center gap-1.5">
+                  {[7, 15, 30, 60].map((d) => (
+                    <Button
+                      key={d}
+                      type="button"
+                      variant={relativeDays === d ? "default" : "outline"}
+                      size="sm"
+                      className="h-9 px-3"
+                      onClick={() => { setRelativeDays(d); setCustomDaysInput(""); }}
+                    >
+                      {d}d
+                    </Button>
+                  ))}
+                  <Input
+                    type="number"
+                    min={1}
+                    placeholder="Outro"
+                    value={customDaysInput}
+                    onChange={(e) => {
+                      setCustomDaysInput(e.target.value);
+                      const n = Number(e.target.value);
+                      if (n > 0) setRelativeDays(n);
+                    }}
+                    className="h-9 w-[80px]"
                   />
-                </PopoverContent>
-              </Popover>
-            </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Date From */}
+                <div className="flex flex-col gap-1.5">
+                  <Label>De</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-[160px] justify-start text-left font-normal",
+                          !dateFrom && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "Início"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={dateFrom}
+                        onSelect={setDateFrom}
+                        locale={ptBR}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Date To */}
+                <div className="flex flex-col gap-1.5">
+                  <Label>Até</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-[160px] justify-start text-left font-normal",
+                          !dateTo && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dateTo ? format(dateTo, "dd/MM/yyyy") : "Fim"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={dateTo}
+                        onSelect={setDateTo}
+                        locale={ptBR}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </>
+            )}
 
             {/* Status filter */}
             <div className="flex flex-col gap-1.5 min-w-[160px]">
