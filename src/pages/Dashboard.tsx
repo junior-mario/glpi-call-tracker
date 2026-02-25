@@ -1,14 +1,17 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { format, eachDayOfInterval, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   CalendarIcon,
   Search,
   Loader2,
-  Ticket,
+  Ticket as TicketIcon,
   Clock,
   AlertCircle,
   CheckCircle,
+  Plus,
+  RefreshCw,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,7 +56,14 @@ import {
   fetchGLPIGroups,
   searchTicketsByGroup,
   loadGLPIConfig,
+  mapGLPIStatus,
+  mapGLPIPriority,
 } from "@/services/glpiService";
+import { StatusBadge } from "@/components/StatusBadge";
+import { PriorityBadge } from "@/components/PriorityBadge";
+import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { differenceInDays } from "date-fns";
 
 const STATUS_LABELS: Record<number, string> = {
   1: "Novo",
@@ -91,7 +101,22 @@ const PRIORITY_COLORS: Record<number, string> = {
   6: "#dc2626",
 };
 
+interface TrackedTicketRow {
+  ticket_id: string;
+  title: string;
+  status: string;
+  priority: string;
+  assignee: string;
+  requester: string;
+  glpi_created_at: string | null;
+  glpi_updated_at: string | null;
+}
+
 const Dashboard = () => {
+  const { user } = useAuth();
+  const [trackedTickets, setTrackedTickets] = useState<TrackedTicketRow[]>([]);
+  const [isLoadingTracked, setIsLoadingTracked] = useState(true);
+
   const [groups, setGroups] = useState<GLPIGroupResponse[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>("");
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
@@ -123,6 +148,47 @@ const Dashboard = () => {
         .finally(() => setIsLoadingGroups(false));
     });
   }, []);
+
+  // Load tracked tickets for the overview columns
+  useEffect(() => {
+    if (!user) return;
+    setIsLoadingTracked(true);
+    api.get<TrackedTicketRow[]>("/api/tracked-tickets")
+      .then((data) => setTrackedTickets(data ?? []))
+      .catch(() => {})
+      .finally(() => setIsLoadingTracked(false));
+  }, [user]);
+
+  // Last 10 opened (most recent by glpi_created_at)
+  const recentOpened = useMemo(
+    () =>
+      [...trackedTickets]
+        .filter((t) => t.glpi_created_at)
+        .sort((a, b) => (b.glpi_created_at ?? "").localeCompare(a.glpi_created_at ?? ""))
+        .slice(0, 10),
+    [trackedTickets]
+  );
+
+  // Last 10 closed/resolved (status = resolved or closed)
+  const recentClosed = useMemo(
+    () =>
+      [...trackedTickets]
+        .filter((t) => t.status === "resolved" || t.status === "closed")
+        .filter((t) => t.glpi_updated_at)
+        .sort((a, b) => (b.glpi_updated_at ?? "").localeCompare(a.glpi_updated_at ?? ""))
+        .slice(0, 10),
+    [trackedTickets]
+  );
+
+  // Last 10 updated (most recent by glpi_updated_at)
+  const recentUpdated = useMemo(
+    () =>
+      [...trackedTickets]
+        .filter((t) => t.glpi_updated_at)
+        .sort((a, b) => (b.glpi_updated_at ?? "").localeCompare(a.glpi_updated_at ?? ""))
+        .slice(0, 10),
+    [trackedTickets]
+  );
 
   const handleSearch = async () => {
     if (!dateFrom || !dateTo) {
@@ -317,6 +383,135 @@ const Dashboard = () => {
 
   return (
     <div className="container max-w-6xl py-6 space-y-6">
+      {/* Overview: 3 columns from tracked tickets */}
+      {isLoadingTracked ? (
+        <Card>
+          <CardContent className="py-10 flex items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Carregando chamados monitorados...
+          </CardContent>
+        </Card>
+      ) : trackedTickets.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Recent opened */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Plus className="h-4 w-4 text-blue-500" />
+                Últimos abertos
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {recentOpened.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Nenhum chamado</p>
+              ) : (
+                <div className="space-y-2">
+                  {recentOpened.map((t) => (
+                    <a
+                      key={t.ticket_id}
+                      href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${t.ticket_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-start gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors no-underline"
+                    >
+                      <span className="text-xs font-mono text-muted-foreground shrink-0 mt-0.5">#{t.ticket_id}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium leading-tight truncate text-foreground">{t.title}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <StatusBadge status={t.status as any} />
+                          <span className="text-xs text-muted-foreground">
+                            {t.glpi_created_at ? format(new Date(t.glpi_created_at), "dd/MM/yy", { locale: ptBR }) : ""}
+                          </span>
+                        </div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Recent closed */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <XCircle className="h-4 w-4 text-gray-500" />
+                Últimos fechados
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {recentClosed.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Nenhum chamado fechado</p>
+              ) : (
+                <div className="space-y-2">
+                  {recentClosed.map((t) => (
+                    <a
+                      key={t.ticket_id}
+                      href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${t.ticket_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-start gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors no-underline"
+                    >
+                      <span className="text-xs font-mono text-muted-foreground shrink-0 mt-0.5">#{t.ticket_id}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium leading-tight truncate text-foreground">{t.title}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <StatusBadge status={t.status as any} />
+                          <span className="text-xs text-muted-foreground">
+                            {t.glpi_updated_at ? format(new Date(t.glpi_updated_at), "dd/MM/yy", { locale: ptBR }) : ""}
+                          </span>
+                        </div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Recent updated */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <RefreshCw className="h-4 w-4 text-amber-500" />
+                Últimos atualizados
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              {recentUpdated.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Nenhum chamado</p>
+              ) : (
+                <div className="space-y-2">
+                  {recentUpdated.map((t) => {
+                    const days = t.glpi_updated_at ? differenceInDays(new Date(), new Date(t.glpi_updated_at)) : 0;
+                    return (
+                      <a
+                        key={t.ticket_id}
+                        href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${t.ticket_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-start gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors no-underline"
+                      >
+                        <span className="text-xs font-mono text-muted-foreground shrink-0 mt-0.5">#{t.ticket_id}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium leading-tight truncate text-foreground">{t.title}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <StatusBadge status={t.status as any} />
+                            <span className={`text-xs ${days > 5 ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
+                              {days === 0 ? "Hoje" : days === 1 ? "1 dia atrás" : `${days}d atrás`}
+                            </span>
+                          </div>
+                        </div>
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
@@ -440,7 +635,7 @@ const Dashboard = () => {
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
                   <div className="rounded-lg bg-blue-500/10 p-2">
-                    <Ticket className="h-5 w-5 text-blue-500" />
+                    <TicketIcon className="h-5 w-5 text-blue-500" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total</p>
