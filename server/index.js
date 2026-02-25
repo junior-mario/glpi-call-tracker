@@ -485,7 +485,7 @@ app.post("/api/whatsapp/send", authenticate, async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.message || "Erro ao enviar mensagem", details: data });
+      return res.status(502).json({ error: data.message || "Erro ao enviar mensagem", details: data });
     }
 
     res.json(data);
