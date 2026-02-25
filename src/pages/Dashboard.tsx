@@ -381,470 +381,408 @@ const Dashboard = () => {
     );
   }
 
+  const ticketCardClasses = "block rounded-lg border bg-card p-3 hover:shadow-md transition-shadow no-underline";
+
+  const renderTicketCard = (t: TrackedTicketRow, dateLabel: string) => (
+    <a
+      key={t.ticket_id}
+      href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${t.ticket_id}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={ticketCardClasses}
+    >
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">#{t.ticket_id}</span>
+        <StatusBadge status={t.status as any} />
+        <PriorityBadge priority={t.priority as any} />
+      </div>
+      <p className="text-sm font-medium leading-snug text-foreground mb-1.5 line-clamp-2">{t.title}</p>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span className="truncate">{t.assignee || "Não atribuído"}</span>
+        <span className="shrink-0 ml-2">{dateLabel}</span>
+      </div>
+    </a>
+  );
+
   return (
-    <div className="container max-w-6xl py-6 space-y-6">
-      {/* Overview: 3 columns from tracked tickets */}
-      {isLoadingTracked ? (
-        <Card>
-          <CardContent className="py-10 flex items-center justify-center gap-2 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Carregando chamados monitorados...
-          </CardContent>
-        </Card>
-      ) : trackedTickets.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Recent opened */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Plus className="h-4 w-4 text-blue-500" />
-                Últimos abertos
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {recentOpened.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">Nenhum chamado</p>
-              ) : (
-                <div className="space-y-2">
-                  {recentOpened.map((t) => (
-                    <a
-                      key={t.ticket_id}
-                      href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${t.ticket_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-start gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors no-underline"
-                    >
-                      <span className="text-xs font-mono text-muted-foreground shrink-0 mt-0.5">#{t.ticket_id}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium leading-tight truncate text-foreground">{t.title}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <StatusBadge status={t.status as any} />
-                          <span className="text-xs text-muted-foreground">
-                            {t.glpi_created_at ? format(new Date(t.glpi_created_at), "dd/MM/yy", { locale: ptBR }) : ""}
-                          </span>
-                        </div>
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Recent closed */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <XCircle className="h-4 w-4 text-gray-500" />
-                Últimos fechados
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {recentClosed.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">Nenhum chamado fechado</p>
-              ) : (
-                <div className="space-y-2">
-                  {recentClosed.map((t) => (
-                    <a
-                      key={t.ticket_id}
-                      href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${t.ticket_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-start gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors no-underline"
-                    >
-                      <span className="text-xs font-mono text-muted-foreground shrink-0 mt-0.5">#{t.ticket_id}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium leading-tight truncate text-foreground">{t.title}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <StatusBadge status={t.status as any} />
-                          <span className="text-xs text-muted-foreground">
-                            {t.glpi_updated_at ? format(new Date(t.glpi_updated_at), "dd/MM/yy", { locale: ptBR }) : ""}
-                          </span>
-                        </div>
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Recent updated */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <RefreshCw className="h-4 w-4 text-amber-500" />
-                Últimos atualizados
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {recentUpdated.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">Nenhum chamado</p>
-              ) : (
-                <div className="space-y-2">
-                  {recentUpdated.map((t) => {
-                    const days = t.glpi_updated_at ? differenceInDays(new Date(), new Date(t.glpi_updated_at)) : 0;
-                    return (
-                      <a
-                        key={t.ticket_id}
-                        href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${t.ticket_id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-start gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors no-underline"
-                      >
-                        <span className="text-xs font-mono text-muted-foreground shrink-0 mt-0.5">#{t.ticket_id}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium leading-tight truncate text-foreground">{t.title}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <StatusBadge status={t.status as any} />
-                            <span className={`text-xs ${days > 5 ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
-                              {days === 0 ? "Hoje" : days === 1 ? "1 dia atrás" : `${days}d atrás`}
-                            </span>
-                          </div>
-                        </div>
-                      </a>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="flex flex-col gap-1.5 min-w-[220px] flex-1">
-              <Label htmlFor="dash-group">Grupo Técnico</Label>
-              <Select
-                value={selectedGroup}
-                onValueChange={setSelectedGroup}
-                disabled={isLoadingGroups}
-              >
-                <SelectTrigger id="dash-group">
-                  <SelectValue
-                    placeholder={
-                      isLoadingGroups ? "Carregando..." : "Selecione um grupo"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os grupos</SelectItem>
-                  {groups.map((g) => (
-                    <SelectItem key={g.id} value={String(g.id)}>
-                      {g.completename}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label>De</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-[160px] justify-start text-left font-normal",
-                      !dateFrom && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "Início"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={dateFrom}
-                    onSelect={setDateFrom}
-                    locale={ptBR}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label>Até</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-[160px] justify-start text-left font-normal",
-                      !dateTo && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateTo ? format(dateTo, "dd/MM/yyyy") : "Fim"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={dateTo}
-                    onSelect={setDateTo}
-                    locale={ptBR}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <Button onClick={handleSearch} disabled={isSearching}>
-              {isSearching ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Search className="mr-2 h-4 w-4" />
-              )}
-              Buscar
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Loading */}
-      {isSearching && (
-        <Card>
-          <CardContent className="py-10 flex items-center justify-center gap-2 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Buscando chamados...
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Empty state */}
-      {!isSearching && hasSearched && tickets.length === 0 && (
-        <Card>
-          <CardContent className="py-10 text-center text-muted-foreground">
-            Nenhum chamado encontrado para os filtros selecionados.
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Dashboard content */}
-      {!isSearching && tickets.length > 0 && (
-        <>
-          {/* KPI Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="py-6 px-4 mx-auto max-w-[1552px]">
+      <div className="flex gap-6">
+        {/* Left: Overview + Charts */}
+        <div className="flex-1 min-w-0 space-y-6">
+          {/* Overview: 3 columns from tracked tickets */}
+          {isLoadingTracked ? (
             <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-blue-500/10 p-2">
-                    <TicketIcon className="h-5 w-5 text-blue-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total</p>
-                    <p className="text-2xl font-bold">{kpis.total}</p>
-                  </div>
-                </div>
+              <CardContent className="py-10 flex items-center justify-center gap-2 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Carregando chamados monitorados...
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-amber-500/10 p-2">
-                    <Clock className="h-5 w-5 text-amber-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Abertos</p>
-                    <p className="text-2xl font-bold">{kpis.abertos}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-red-500/10 p-2">
-                    <AlertCircle className="h-5 w-5 text-red-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Pendentes</p>
-                    <p className="text-2xl font-bold">{kpis.pendentes}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-green-500/10 p-2">
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Resolvidos</p>
-                    <p className="text-2xl font-bold">{kpis.resolvidos}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Charts row 1: Status + Priority */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Status Donut */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  Distribuição por Status
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer config={statusChartConfig} className="mx-auto aspect-square max-h-[300px]">
-                  <PieChart>
-                    <ChartTooltip content={<ChartTooltipContent nameKey="name" />} />
-                    <Pie
-                      data={statusData}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={60}
-                      outerRadius={100}
-                      strokeWidth={2}
-                    >
-                      {statusData.map((entry, i) => (
-                        <Cell key={i} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <ChartLegend content={<ChartLegendContent nameKey="name" />} />
-                  </PieChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-
-            {/* Priority Bar */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  Distribuição por Prioridade
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer config={priorityChartConfig} className="max-h-[300px]">
-                  <BarChart data={priorityData}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} />
-                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                      {priorityData.map((entry, i) => (
-                        <Cell key={i} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Charts row 2: Technician + Tag */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Technician Horizontal Bar */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  Chamados por Técnico
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="overflow-hidden">
-                <ChartContainer
-                  config={techChartConfig}
-                  className="!aspect-auto max-h-[350px] w-full"
-                  style={{ height: Math.max(200, techData.length * 40) }}
-                >
-                  <BarChart data={techData} layout="vertical" margin={{ left: 0, right: 12 }}>
-                    <CartesianGrid horizontal={false} />
-                    <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      tickLine={false}
-                      axisLine={false}
-                      width={110}
-                      fontSize={11}
-                      tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 15) + "…" : v}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-
-            {/* Tag Horizontal Bar */}
-            {tagData.length > 0 && (
+          ) : trackedTickets.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Recent opened */}
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    Chamados por Tag
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Plus className="h-4 w-4 text-blue-500" />
+                    Últimos abertos
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="overflow-hidden">
-                  <ChartContainer
-                    config={tagChartConfig}
-                    className="!aspect-auto max-h-[350px] w-full"
-                    style={{ height: Math.max(200, tagData.length * 40) }}
-                  >
-                    <BarChart data={tagData} layout="vertical" margin={{ left: 0, right: 12 }}>
-                      <CartesianGrid horizontal={false} />
-                      <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        tickLine={false}
-                        axisLine={false}
-                        width={110}
-                        fontSize={11}
-                        tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 15) + "…" : v}
-                      />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ChartContainer>
+                <CardContent className="pt-0">
+                  {recentOpened.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum chamado</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {recentOpened.map((t) =>
+                        renderTicketCard(t, t.glpi_created_at ? format(new Date(t.glpi_created_at), "dd/MM/yy", { locale: ptBR }) : "")
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            )}
-          </div>
 
-          {/* Timeline Area Chart */}
-          {dailyData.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  Chamados ao longo do tempo
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer config={dailyChartConfig} className="max-h-[300px]">
-                  <AreaChart data={dailyData}>
-                    <defs>
-                      <linearGradient id="fillArea" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid vertical={false} />
-                    <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} />
-                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="hsl(var(--primary))"
-                      fill="url(#fillArea)"
-                      strokeWidth={2}
+              {/* Recent closed */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-gray-500" />
+                    Últimos fechados
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  {recentClosed.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum chamado fechado</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {recentClosed.map((t) =>
+                        renderTicketCard(t, t.glpi_updated_at ? format(new Date(t.glpi_updated_at), "dd/MM/yy", { locale: ptBR }) : "")
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Recent updated */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 text-amber-500" />
+                    Últimos atualizados
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  {recentUpdated.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum chamado</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {recentUpdated.map((t) => {
+                        const days = t.glpi_updated_at ? differenceInDays(new Date(), new Date(t.glpi_updated_at)) : 0;
+                        const label = days === 0 ? "Hoje" : days === 1 ? "1 dia" : `${days}d`;
+                        return renderTicketCard(t, label);
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
+
+          {/* Dashboard charts content */}
+          {!isSearching && tickets.length > 0 && (
+            <>
+              {/* KPI Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg bg-blue-500/10 p-2">
+                        <TicketIcon className="h-5 w-5 text-blue-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Total</p>
+                        <p className="text-2xl font-bold">{kpis.total}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg bg-amber-500/10 p-2">
+                        <Clock className="h-5 w-5 text-amber-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Abertos</p>
+                        <p className="text-2xl font-bold">{kpis.abertos}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg bg-red-500/10 p-2">
+                        <AlertCircle className="h-5 w-5 text-red-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Pendentes</p>
+                        <p className="text-2xl font-bold">{kpis.pendentes}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg bg-green-500/10 p-2">
+                        <CheckCircle className="h-5 w-5 text-green-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Resolvidos</p>
+                        <p className="text-2xl font-bold">{kpis.resolvidos}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Charts row 1: Status + Priority */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Distribuição por Status</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ChartContainer config={statusChartConfig} className="mx-auto aspect-square max-h-[300px]">
+                      <PieChart>
+                        <ChartTooltip content={<ChartTooltipContent nameKey="name" />} />
+                        <Pie data={statusData} dataKey="value" nameKey="name" innerRadius={60} outerRadius={100} strokeWidth={2}>
+                          {statusData.map((entry, i) => (
+                            <Cell key={i} fill={entry.fill} />
+                          ))}
+                        </Pie>
+                        <ChartLegend content={<ChartLegendContent nameKey="name" />} />
+                      </PieChart>
+                    </ChartContainer>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Distribuição por Prioridade</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ChartContainer config={priorityChartConfig} className="max-h-[300px]">
+                      <BarChart data={priorityData}>
+                        <CartesianGrid vertical={false} />
+                        <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} />
+                        <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                        <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                          {priorityData.map((entry, i) => (
+                            <Cell key={i} fill={entry.fill} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ChartContainer>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Charts row 2: Technician + Tag */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Chamados por Técnico</CardTitle>
+                  </CardHeader>
+                  <CardContent className="overflow-hidden">
+                    <ChartContainer config={techChartConfig} className="!aspect-auto max-h-[350px] w-full" style={{ height: Math.max(200, techData.length * 40) }}>
+                      <BarChart data={techData} layout="vertical" margin={{ left: 0, right: 12 }}>
+                        <CartesianGrid horizontal={false} />
+                        <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
+                        <YAxis type="category" dataKey="name" tickLine={false} axisLine={false} width={110} fontSize={11} tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 15) + "…" : v} />
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                        <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ChartContainer>
+                  </CardContent>
+                </Card>
+
+                {tagData.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Chamados por Tag</CardTitle>
+                    </CardHeader>
+                    <CardContent className="overflow-hidden">
+                      <ChartContainer config={tagChartConfig} className="!aspect-auto max-h-[350px] w-full" style={{ height: Math.max(200, tagData.length * 40) }}>
+                        <BarChart data={tagData} layout="vertical" margin={{ left: 0, right: 12 }}>
+                          <CartesianGrid horizontal={false} />
+                          <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
+                          <YAxis type="category" dataKey="name" tickLine={false} axisLine={false} width={110} fontSize={11} tickFormatter={(v: string) => v.length > 16 ? v.slice(0, 15) + "…" : v} />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ChartContainer>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* Timeline Area Chart */}
+              {dailyData.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Chamados ao longo do tempo</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ChartContainer config={dailyChartConfig} className="max-h-[300px]">
+                      <AreaChart data={dailyData}>
+                        <defs>
+                          <linearGradient id="fillArea" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.05} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid vertical={false} />
+                        <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} />
+                        <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                        <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" fill="url(#fillArea)" strokeWidth={2} />
+                      </AreaChart>
+                    </ChartContainer>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Right: Search sidebar */}
+        <div className="w-[320px] shrink-0 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Search className="h-4 w-4" />
+                Pesquisa avançada
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="dash-group">Grupo Técnico</Label>
+                <Select
+                  value={selectedGroup}
+                  onValueChange={setSelectedGroup}
+                  disabled={isLoadingGroups}
+                >
+                  <SelectTrigger id="dash-group">
+                    <SelectValue
+                      placeholder={isLoadingGroups ? "Carregando..." : "Selecione um grupo"}
                     />
-                  </AreaChart>
-                </ChartContainer>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os grupos</SelectItem>
+                    {groups.map((g) => (
+                      <SelectItem key={g.id} value={String(g.id)}>
+                        {g.completename}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>De</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !dateFrom && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "Início"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={dateFrom}
+                      onSelect={setDateFrom}
+                      locale={ptBR}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Até</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !dateTo && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {dateTo ? format(dateTo, "dd/MM/yyyy") : "Fim"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={dateTo}
+                      onSelect={setDateTo}
+                      locale={ptBR}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <Button onClick={handleSearch} disabled={isSearching} className="w-full">
+                {isSearching ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Search className="mr-2 h-4 w-4" />
+                )}
+                Buscar
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Search status */}
+          {isSearching && (
+            <Card>
+              <CardContent className="py-6 flex items-center justify-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Buscando...
               </CardContent>
             </Card>
           )}
-        </>
-      )}
+
+          {!isSearching && hasSearched && tickets.length === 0 && (
+            <Card>
+              <CardContent className="py-6 text-center text-sm text-muted-foreground">
+                Nenhum chamado encontrado.
+              </CardContent>
+            </Card>
+          )}
+
+          {!isSearching && tickets.length > 0 && (
+            <Card>
+              <CardContent className="pt-4">
+                <p className="text-xs text-muted-foreground mb-2">
+                  {tickets.length} chamado{tickets.length !== 1 ? "s" : ""} encontrado{tickets.length !== 1 ? "s" : ""}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
