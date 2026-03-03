@@ -8,11 +8,14 @@ let configCache: GLPIConfig | null = null;
 
 export async function loadGLPIConfig(): Promise<GLPIConfig | null> {
   try {
-    const data = await api.get<{ base_url: string; app_token: string; user_token: string }>("/api/glpi-config");
+    const data = await api.get<{ base_url: string; app_token: string; user_token: string; poll_interval?: number; overview_group_id?: number | null; overview_days?: number | null }>("/api/glpi-config");
     configCache = {
       baseUrl: data.base_url,
       appToken: data.app_token,
       userToken: data.user_token,
+      pollInterval: data.poll_interval ?? 10,
+      overviewGroupId: data.overview_group_id ?? null,
+      overviewDays: data.overview_days ?? null,
     };
     return configCache;
   } catch {
@@ -49,6 +52,9 @@ export async function saveGLPIConfig(config: GLPIConfig): Promise<void> {
     base_url: config.baseUrl,
     app_token: config.appToken,
     user_token: config.userToken,
+    poll_interval: config.pollInterval ?? 10,
+    overview_group_id: config.overviewGroupId ?? null,
+    overview_days: config.overviewDays ?? null,
   });
   configCache = config;
 }

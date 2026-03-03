@@ -2,6 +2,9 @@ export interface GLPIConfig {
   baseUrl: string;
   appToken: string;
   userToken: string;
+  pollInterval?: number;
+  overviewGroupId?: number | null;
+  overviewDays?: number | null;
 }
 
 export interface GLPISessionResponse {

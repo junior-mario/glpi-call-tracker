@@ -17,7 +17,11 @@ function getLatestUpdateDate(updates: TicketUpdate[]): string | null {
   return updates.reduce((latest, u) => u.date > latest ? u.date : latest, updates[0].date);
 }
 
-const POLL_INTERVAL = 10 * 60 * 1000; // 10 minutes
+function getPollIntervalMs(): number {
+  const config = getGLPIConfig();
+  const minutes = config?.pollInterval ?? 10;
+  return minutes * 60 * 1000;
+}
 
 interface KanbanColumn {
   id: number;
@@ -190,9 +194,9 @@ const Index = () => {
     loadColumns().then(() => loadTickets());
   }, [loadColumns, loadTickets]);
 
-  // Start polling interval
+  // Start polling interval (dynamic from config)
   useEffect(() => {
-    const interval = setInterval(pollTickets, POLL_INTERVAL);
+    const interval = setInterval(pollTickets, getPollIntervalMs());
     return () => clearInterval(interval);
   }, [pollTickets]);
 

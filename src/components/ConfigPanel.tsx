@@ -5,9 +5,16 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { Settings, TestTube, CheckCircle, XCircle, Loader2, Eye, EyeOff, Save, Trash2 } from "lucide-react";
-import { GLPIConfig, GLPITestResult } from "@/types/glpi";
-import { loadGLPIConfig, saveGLPIConfig, clearGLPIConfig, testGLPIConnection } from "@/services/glpiService";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Settings, TestTube, CheckCircle, XCircle, Loader2, Eye, EyeOff, Save, Trash2, Timer, LayoutDashboard } from "lucide-react";
+import { GLPIConfig, GLPITestResult, GLPIGroupResponse } from "@/types/glpi";
+import { loadGLPIConfig, saveGLPIConfig, clearGLPIConfig, testGLPIConnection, fetchGLPIGroups } from "@/services/glpiService";
 
 interface ConfigPanelProps {
   onConfigSaved: () => void;
@@ -18,6 +25,7 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
     baseUrl: "",
     appToken: "",
     userToken: "",
+    pollInterval: 10,
   });
   const [testTicketId, setTestTicketId] = useState("");
   const [showAppToken, setShowAppToken] = useState(false);
@@ -26,12 +34,24 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [testResult, setTestResult] = useState<GLPITestResult | null>(null);
   const [hasConfig, setHasConfig] = useState(false);
+  const [groups, setGroups] = useState<GLPIGroupResponse[]>([]);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(false);
+  const [overviewGroup, setOverviewGroup] = useState<string>("all");
+  const [overviewDays, setOverviewDays] = useState<number | "">(30);
 
   useEffect(() => {
     loadGLPIConfig().then((savedConfig) => {
       if (savedConfig) {
         setConfig(savedConfig);
         setHasConfig(true);
+        setOverviewGroup(savedConfig.overviewGroupId ? String(savedConfig.overviewGroupId) : "all");
+        setOverviewDays(savedConfig.overviewDays ?? "");
+        // Load groups once we know config exists
+        setIsLoadingGroups(true);
+        fetchGLPIGroups()
+          .then(setGroups)
+          .catch(() => {})
+          .finally(() => setIsLoadingGroups(false));
       }
     });
   }, []);
@@ -39,7 +59,13 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await saveGLPIConfig(config);
+      const toSave: GLPIConfig = {
+        ...config,
+        overviewGroupId: overviewGroup && overviewGroup !== "all" ? Number(overviewGroup) : null,
+        overviewDays: typeof overviewDays === "number" && overviewDays > 0 ? overviewDays : null,
+      };
+      await saveGLPIConfig(toSave);
+      setConfig(toSave);
       setHasConfig(true);
       onConfigSaved();
     } catch (error) {
@@ -55,6 +81,7 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
       baseUrl: "",
       appToken: "",
       userToken: "",
+      pollInterval: 10,
     });
     setHasConfig(false);
     setTestResult(null);
@@ -149,6 +176,110 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
           <p className="text-xs text-muted-foreground">
             Token pessoal em Minhas configurações → Controle remoto → Token de acesso pessoal
           </p>
+        </div>
+
+        <Separator />
+
+        {/* Poll Interval */}
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2">
+            <Timer className="h-4 w-4 text-primary" />
+            Intervalo de atualização (minutos)
+          </Label>
+          <div className="flex gap-2">
+            {[5, 10, 15, 30].map((v) => (
+              <Button
+                key={v}
+                type="button"
+                variant={config.pollInterval === v ? "default" : "outline"}
+                size="sm"
+                onClick={() => setConfig({ ...config, pollInterval: v })}
+              >
+                {v}
+              </Button>
+            ))}
+            <Input
+              type="number"
+              min={1}
+              max={120}
+              className="w-20"
+              value={config.pollInterval ?? 10}
+              onChange={(e) => setConfig({ ...config, pollInterval: Math.max(1, Number(e.target.value) || 10) })}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Frequência com que os chamados monitorados são atualizados automaticamente
+          </p>
+        </div>
+
+        <Separator />
+
+        {/* Overview Settings */}
+        <div className="space-y-4">
+          <h4 className="font-medium text-sm flex items-center gap-2">
+            <LayoutDashboard className="h-4 w-4 text-primary" />
+            Visão Geral do Dashboard
+          </h4>
+          <p className="text-xs text-muted-foreground">
+            Configure o grupo e o período para a aba "Visão Geral" do Dashboard.
+          </p>
+
+          <div className="space-y-2">
+            <Label>Grupo Técnico</Label>
+            <Select
+              value={overviewGroup}
+              onValueChange={setOverviewGroup}
+              disabled={isLoadingGroups || !hasConfig}
+            >
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={isLoadingGroups ? "Carregando..." : "Todos os grupos"}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os grupos</SelectItem>
+                {groups.map((g) => (
+                  <SelectItem key={g.id} value={String(g.id)}>
+                    {g.completename}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Período</Label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Últimos</span>
+              <Input
+                type="number"
+                min={1}
+                max={365}
+                className="w-20"
+                disabled={!hasConfig}
+                value={overviewDays}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setOverviewDays(v === "" ? "" : Math.max(1, Number(v) || 1));
+                }}
+              />
+              <span className="text-sm text-muted-foreground">dias</span>
+            </div>
+            <div className="flex gap-2">
+              {[7, 15, 30, 60, 90].map((v) => (
+                <Button
+                  key={v}
+                  type="button"
+                  variant={overviewDays === v ? "default" : "outline"}
+                  size="sm"
+                  disabled={!hasConfig}
+                  onClick={() => setOverviewDays(v)}
+                >
+                  {v}d
+                </Button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Action Buttons */}

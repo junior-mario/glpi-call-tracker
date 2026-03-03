@@ -69,6 +69,19 @@ db.exec(`
     phone TEXT NOT NULL,
     created_at TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS custom_dashboards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL DEFAULT 'Nova Dashboard',
+    group_id INTEGER,
+    date_from TEXT,
+    date_to TEXT,
+    visible_charts TEXT NOT NULL DEFAULT '["kpis","status","priority","technician","tags","timeline"]',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
 `);
 
 // Migration: add display_column to tracked_tickets (idempotent)
@@ -84,6 +97,44 @@ try {
 } catch (_) {
   // Column already exists — ignore
 }
+
+// Migration: add poll_interval to glpi_configs (idempotent)
+try {
+  db.exec("ALTER TABLE glpi_configs ADD COLUMN poll_interval INTEGER DEFAULT 10");
+} catch (_) {
+  // Column already exists — ignore
+}
+
+// Migration: add overview settings to glpi_configs (idempotent)
+try {
+  db.exec("ALTER TABLE glpi_configs ADD COLUMN overview_group_id INTEGER");
+} catch (_) {}
+try {
+  db.exec("ALTER TABLE glpi_configs ADD COLUMN overview_date_from TEXT");
+} catch (_) {}
+try {
+  db.exec("ALTER TABLE glpi_configs ADD COLUMN overview_date_to TEXT");
+} catch (_) {}
+try {
+  db.exec("ALTER TABLE glpi_configs ADD COLUMN overview_days INTEGER");
+} catch (_) {}
+
+// Migration: add display_mode and filters to custom_dashboards (idempotent)
+try {
+  db.exec("ALTER TABLE custom_dashboards ADD COLUMN display_mode TEXT NOT NULL DEFAULT 'charts'");
+} catch (_) {}
+try {
+  db.exec("ALTER TABLE custom_dashboards ADD COLUMN filter_statuses TEXT");
+} catch (_) {}
+try {
+  db.exec("ALTER TABLE custom_dashboards ADD COLUMN filter_technician TEXT");
+} catch (_) {}
+try {
+  db.exec("ALTER TABLE custom_dashboards ADD COLUMN filter_requester TEXT");
+} catch (_) {}
+try {
+  db.exec("ALTER TABLE custom_dashboards ADD COLUMN period_days INTEGER");
+} catch (_) {}
 
 // Middleware
 app.use(cors());
@@ -159,24 +210,37 @@ app.get("/api/auth/me", authenticate, (req, res) => {
 app.get("/api/glpi-config", authenticate, (req, res) => {
   const row = db.prepare("SELECT * FROM glpi_configs WHERE user_id = ?").get(req.userId);
   if (!row) return res.status(404).json({ error: "Configuração não encontrada" });
-  res.json({ base_url: row.base_url, app_token: row.app_token, user_token: row.user_token });
+  res.json({
+    base_url: row.base_url,
+    app_token: row.app_token,
+    user_token: row.user_token,
+    poll_interval: row.poll_interval ?? 10,
+    overview_group_id: row.overview_group_id ?? null,
+    overview_days: row.overview_days ?? null,
+  });
 });
 
 app.put("/api/glpi-config", authenticate, (req, res) => {
-  const { base_url, app_token, user_token } = req.body;
+  const { base_url, app_token, user_token, poll_interval, overview_group_id, overview_days } = req.body;
   if (!base_url || !app_token || !user_token) {
     return res.status(400).json({ error: "Todos os campos são obrigatórios" });
   }
 
+  const interval = Number(poll_interval) > 0 ? Number(poll_interval) : 10;
+  const days = overview_days != null && Number(overview_days) > 0 ? Number(overview_days) : null;
+
   db.prepare(`
-    INSERT INTO glpi_configs (user_id, base_url, app_token, user_token, updated_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
+    INSERT INTO glpi_configs (user_id, base_url, app_token, user_token, poll_interval, overview_group_id, overview_days, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(user_id) DO UPDATE SET
       base_url = excluded.base_url,
       app_token = excluded.app_token,
       user_token = excluded.user_token,
+      poll_interval = excluded.poll_interval,
+      overview_group_id = excluded.overview_group_id,
+      overview_days = excluded.overview_days,
       updated_at = excluded.updated_at
-  `).run(req.userId, base_url, app_token, user_token);
+  `).run(req.userId, base_url, app_token, user_token, interval, overview_group_id ?? null, days);
 
   res.json({ success: true });
 });
@@ -400,6 +464,107 @@ app.delete("/api/kanban-columns/:id", authenticate, (req, res) => {
   tx();
 
   res.json({ success: true, movedTo: fallback.id });
+});
+
+// ─── Custom Dashboards Routes ────────────────────────────────
+
+function serializeDashRow(r) {
+  return { ...r, visible_charts: JSON.parse(r.visible_charts), filter_statuses: r.filter_statuses ? JSON.parse(r.filter_statuses) : null };
+}
+
+app.get("/api/custom-dashboards", authenticate, (req, res) => {
+  const rows = db.prepare(
+    "SELECT * FROM custom_dashboards WHERE user_id = ? ORDER BY position"
+  ).all(req.userId);
+  res.json(rows.map(serializeDashRow));
+});
+
+app.post("/api/custom-dashboards", authenticate, (req, res) => {
+  const { name, group_id, date_from, date_to, visible_charts, display_mode, filter_statuses, filter_technician, filter_requester, period_days } = req.body;
+  const maxPos = db.prepare(
+    "SELECT COALESCE(MAX(position), -1) AS max_pos FROM custom_dashboards WHERE user_id = ?"
+  ).get(req.userId);
+  const position = (maxPos?.max_pos ?? -1) + 1;
+
+  const charts = visible_charts ? JSON.stringify(visible_charts) : '["kpis","status","priority","technician","tags","timeline"]';
+  const statuses = filter_statuses ? JSON.stringify(filter_statuses) : null;
+  const pDays = period_days != null && Number(period_days) > 0 ? Number(period_days) : null;
+
+  const result = db.prepare(
+    "INSERT INTO custom_dashboards (user_id, name, group_id, date_from, date_to, visible_charts, display_mode, filter_statuses, filter_technician, filter_requester, period_days, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(req.userId, name || "Nova Dashboard", group_id || null, date_from || null, date_to || null, charts, display_mode || "charts", statuses, filter_technician || null, filter_requester || null, pDays, position);
+
+  const row = db.prepare("SELECT * FROM custom_dashboards WHERE id = ?").get(result.lastInsertRowid);
+  res.status(201).json(serializeDashRow(row));
+});
+
+app.get("/api/custom-dashboards/:id", authenticate, (req, res) => {
+  const row = db.prepare(
+    "SELECT * FROM custom_dashboards WHERE id = ? AND user_id = ?"
+  ).get(req.params.id, req.userId);
+  if (!row) return res.status(404).json({ error: "Dashboard não encontrada" });
+  res.json(serializeDashRow(row));
+});
+
+app.patch("/api/custom-dashboards/:id", authenticate, (req, res) => {
+  const { id } = req.params;
+  const existing = db.prepare(
+    "SELECT * FROM custom_dashboards WHERE id = ? AND user_id = ?"
+  ).get(id, req.userId);
+  if (!existing) return res.status(404).json({ error: "Dashboard não encontrada" });
+
+  const fields = req.body;
+  const allowed = ["name", "group_id", "date_from", "date_to", "visible_charts", "display_mode", "filter_statuses", "filter_technician", "filter_requester", "period_days"];
+  const sets = [];
+  const values = [];
+
+  for (const key of allowed) {
+    if (key in fields) {
+      sets.push(`${key} = ?`);
+      const val = (key === "visible_charts" || key === "filter_statuses") ? JSON.stringify(fields[key]) : fields[key];
+      values.push(val);
+    }
+  }
+
+  if (sets.length === 0) return res.status(400).json({ error: "Nenhum campo para atualizar" });
+
+  sets.push("updated_at = datetime('now')");
+  values.push(id, req.userId);
+
+  db.prepare(
+    `UPDATE custom_dashboards SET ${sets.join(", ")} WHERE id = ? AND user_id = ?`
+  ).run(...values);
+
+  const row = db.prepare("SELECT * FROM custom_dashboards WHERE id = ?").get(id);
+  res.json(serializeDashRow(row));
+});
+
+app.put("/api/custom-dashboards/reorder", authenticate, (req, res) => {
+  const { order } = req.body;
+  if (!Array.isArray(order)) return res.status(400).json({ error: "order deve ser um array" });
+
+  const update = db.prepare(
+    "UPDATE custom_dashboards SET position = ? WHERE id = ? AND user_id = ?"
+  );
+  const tx = db.transaction(() => {
+    order.forEach((dashId, idx) => {
+      update.run(idx, dashId, req.userId);
+    });
+  });
+  tx();
+
+  res.json({ success: true });
+});
+
+app.delete("/api/custom-dashboards/:id", authenticate, (req, res) => {
+  const { id } = req.params;
+  const existing = db.prepare(
+    "SELECT * FROM custom_dashboards WHERE id = ? AND user_id = ?"
+  ).get(id, req.userId);
+  if (!existing) return res.status(404).json({ error: "Dashboard não encontrada" });
+
+  db.prepare("DELETE FROM custom_dashboards WHERE id = ? AND user_id = ?").run(id, req.userId);
+  res.json({ success: true });
 });
 
 // ─── WhatsApp Contacts Routes ────────────────────────────────
