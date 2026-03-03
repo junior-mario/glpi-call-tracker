@@ -1,4 +1,5 @@
 import { ConfigPanel } from "@/components/ConfigPanel";
+import { AIConfigPanel } from "@/components/AIConfigPanel";
 import { ContactsPanel } from "@/components/ContactsPanel";
 import { toast } from "@/hooks/use-toast";
 
@@ -13,6 +14,7 @@ const Settings = () => {
   return (
     <div className="container max-w-2xl py-6 space-y-6">
       <ConfigPanel onConfigSaved={handleConfigSaved} />
+      <AIConfigPanel />
       <ContactsPanel />
     </div>
   );

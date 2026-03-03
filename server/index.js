@@ -82,6 +82,26 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS ai_configs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL DEFAULT 'openai',
+    base_url TEXT NOT NULL,
+    api_key TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT 'gpt-4o-mini',
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS ai_analyses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ticket_id TEXT NOT NULL,
+    analysis_text TEXT NOT NULL,
+    model_used TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(user_id, ticket_id)
+  );
 `);
 
 // Migration: add display_column to tracked_tickets (idempotent)
@@ -658,6 +678,297 @@ app.post("/api/whatsapp/send", authenticate, async (req, res) => {
     console.error("Erro ao enviar WhatsApp:", err);
     res.status(500).json({ error: "Erro interno ao enviar mensagem" });
   }
+});
+
+// ─── AI Config Routes ────────────────────────────────────────
+
+app.get("/api/ai-config", authenticate, (req, res) => {
+  const row = db.prepare("SELECT * FROM ai_configs WHERE user_id = ?").get(req.userId);
+  if (!row) return res.status(404).json({ error: "Configuração de IA não encontrada" });
+  // Mask API key — only return last 4 characters
+  const maskedKey = row.api_key.length > 4
+    ? "•".repeat(row.api_key.length - 4) + row.api_key.slice(-4)
+    : row.api_key;
+  res.json({
+    provider: row.provider,
+    base_url: row.base_url,
+    api_key: maskedKey,
+    model: row.model,
+  });
+});
+
+app.put("/api/ai-config", authenticate, (req, res) => {
+  const { provider, base_url, api_key, model } = req.body;
+  if (!base_url || !api_key || !model) {
+    return res.status(400).json({ error: "base_url, api_key e model são obrigatórios" });
+  }
+
+  // If masked key is sent back, keep the existing key
+  let finalApiKey = api_key;
+  if (api_key.includes("•")) {
+    const existing = db.prepare("SELECT api_key FROM ai_configs WHERE user_id = ?").get(req.userId);
+    if (existing) {
+      finalApiKey = existing.api_key;
+    }
+  }
+
+  db.prepare(`
+    INSERT INTO ai_configs (user_id, provider, base_url, api_key, model, updated_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(user_id) DO UPDATE SET
+      provider = excluded.provider,
+      base_url = excluded.base_url,
+      api_key = excluded.api_key,
+      model = excluded.model,
+      updated_at = excluded.updated_at
+  `).run(req.userId, provider || "custom", base_url, finalApiKey, model);
+
+  res.json({ success: true });
+});
+
+app.delete("/api/ai-config", authenticate, (req, res) => {
+  db.prepare("DELETE FROM ai_configs WHERE user_id = ?").run(req.userId);
+  res.json({ success: true });
+});
+
+app.post("/api/ai-config/test", authenticate, async (req, res) => {
+  const row = db.prepare("SELECT * FROM ai_configs WHERE user_id = ?").get(req.userId);
+  if (!row) {
+    return res.status(404).json({ success: false, message: "Configuração de IA não encontrada" });
+  }
+
+  try {
+    const response = await fetch(`${row.base_url}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${row.api_key}`,
+      },
+      body: JSON.stringify({
+        model: row.model,
+        messages: [{ role: "user", content: "Responda apenas: OK" }],
+        max_tokens: 10,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      let msg = `HTTP ${response.status}`;
+      try {
+        const errorData = JSON.parse(text);
+        msg = errorData.error?.message || errorData.message || msg;
+      } catch {
+        if (text) msg = text.slice(0, 300);
+      }
+      if (response.status === 429) {
+        msg = `Rate limit atingido (429). ${msg}. Aguarde alguns segundos e tente novamente.`;
+      }
+      return res.json({ success: false, message: `Erro do provedor: ${msg}` });
+    }
+
+    const data = await response.json();
+    const reply = data.choices?.[0]?.message?.content || "";
+    res.json({ success: true, message: `Conexão bem-sucedida! Resposta: "${reply.trim()}"` });
+  } catch (err) {
+    res.json({ success: false, message: `Erro de conexão: ${err.message}` });
+  }
+});
+
+// ─── AI Analysis Routes ──────────────────────────────────────
+
+function stripHtmlTags(html) {
+  return (html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function buildAnalysisPrompt(ticketData) {
+  const lines = [];
+  lines.push(`# Chamado #${ticketData.id}: ${ticketData.title}`);
+  lines.push(`- Status: ${ticketData.status}`);
+  lines.push(`- Prioridade: ${ticketData.priority}`);
+  lines.push(`- Solicitante: ${ticketData.requester}`);
+  lines.push(`- Técnico: ${ticketData.assignee}`);
+  lines.push(`- Aberto em: ${ticketData.createdAt}`);
+  lines.push(`- Última atualização: ${ticketData.updatedAt}`);
+  lines.push("");
+  lines.push("## Histórico cronológico:");
+
+  // Sort updates chronologically (oldest first)
+  const updates = [...(ticketData.updates || [])].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+
+  for (const u of updates) {
+    const content = stripHtmlTags(u.content);
+    lines.push(`[${u.date}] (${u.type}) ${u.author}: ${content}`);
+  }
+
+  // Truncate to ~15000 chars keeping start and end
+  let prompt = lines.join("\n");
+  if (prompt.length > 15000) {
+    const head = prompt.slice(0, 7000);
+    const tail = prompt.slice(-7000);
+    prompt = head + "\n\n[... conteúdo truncado ...]\n\n" + tail;
+  }
+
+  return prompt;
+}
+
+const AI_SYSTEM_PROMPT = `Você é um analista de suporte técnico. Analise o chamado de TI fornecido e gere um relatório estruturado em markdown com as seguintes seções:
+
+## 1. Resumo do Chamado
+Descreva brevemente a solicitação original e a solução aplicada.
+
+## 2. Linha do Tempo
+Liste cada interação com o intervalo de tempo entre elas (ex: "2h30min entre abertura e primeira resposta").
+
+## 3. Tempo de Resolução
+Tempo total entre abertura e fechamento/resolução do chamado.
+
+## 4. Análise de Atrasos
+Se o chamado demorou mais de 2 dias úteis para ser resolvido, identifique as causas prováveis:
+- Demora na atualização/resposta do técnico
+- Aguardando suporte externo (fabricante, fornecedor)
+- Compra de material/equipamento
+- Dependências externas (aprovação, infraestrutura)
+- Falta de informações do solicitante
+Se não houve atraso significativo, indique que o tempo de resolução foi adequado.
+
+## 5. Classificação
+Classifique o chamado em uma ou mais categorias: Hardware, Software, Rede, Acesso/Permissões, Impressora, E-mail, Telefonia, Infraestrutura, Outro.
+
+Responda sempre em português brasileiro. Use formatação markdown limpa e bem estruturada.`;
+
+app.post("/api/ai/analyze", authenticate, async (req, res) => {
+  const { ticket_data, force_refresh } = req.body;
+  if (!ticket_data || !ticket_data.id) {
+    return res.status(400).json({ error: "ticket_data é obrigatório" });
+  }
+
+  const aiConfig = db.prepare("SELECT * FROM ai_configs WHERE user_id = ?").get(req.userId);
+  if (!aiConfig) {
+    return res.status(400).json({ error: "Configuração de IA não encontrada. Configure em Configurações." });
+  }
+
+  // Check cache unless force_refresh
+  if (!force_refresh) {
+    const cached = db.prepare(
+      "SELECT * FROM ai_analyses WHERE user_id = ? AND ticket_id = ?"
+    ).get(req.userId, String(ticket_data.id));
+    if (cached) {
+      return res.json({
+        id: cached.id,
+        ticket_id: cached.ticket_id,
+        analysis_text: cached.analysis_text,
+        model_used: cached.model_used,
+        created_at: cached.created_at,
+        cached: true,
+      });
+    }
+  }
+
+  try {
+    const userPrompt = buildAnalysisPrompt(ticket_data);
+
+    const response = await fetch(`${aiConfig.base_url}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${aiConfig.api_key}`,
+      },
+      body: JSON.stringify({
+        model: aiConfig.model,
+        messages: [
+          { role: "system", content: AI_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+        max_tokens: 4000,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      let msg = `HTTP ${response.status}`;
+      try {
+        const errorData = JSON.parse(text);
+        msg = errorData.error?.message || errorData.message || msg;
+      } catch {
+        if (text) msg = text.slice(0, 300);
+      }
+      if (response.status === 429) {
+        msg = `Rate limit atingido (429). Aguarde alguns segundos e tente novamente. ${msg}`;
+      }
+      return res.status(502).json({ error: `Erro do provedor de IA: ${msg}` });
+    }
+
+    const data = await response.json();
+    const analysisText = data.choices?.[0]?.message?.content;
+    if (!analysisText) {
+      return res.status(502).json({ error: "Resposta vazia do provedor de IA" });
+    }
+
+    // Cache result (upsert)
+    db.prepare(`
+      INSERT INTO ai_analyses (user_id, ticket_id, analysis_text, model_used, created_at)
+      VALUES (?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(user_id, ticket_id) DO UPDATE SET
+        analysis_text = excluded.analysis_text,
+        model_used = excluded.model_used,
+        created_at = excluded.created_at
+    `).run(req.userId, String(ticket_data.id), analysisText, aiConfig.model);
+
+    const row = db.prepare(
+      "SELECT * FROM ai_analyses WHERE user_id = ? AND ticket_id = ?"
+    ).get(req.userId, String(ticket_data.id));
+
+    res.json({
+      id: row.id,
+      ticket_id: row.ticket_id,
+      analysis_text: row.analysis_text,
+      model_used: row.model_used,
+      created_at: row.created_at,
+      cached: false,
+    });
+  } catch (err) {
+    console.error("Erro na análise de IA:", err);
+    res.status(500).json({ error: `Erro ao processar análise: ${err.message}` });
+  }
+});
+
+app.get("/api/ai/analyses/:ticketId", authenticate, (req, res) => {
+  const row = db.prepare(
+    "SELECT * FROM ai_analyses WHERE user_id = ? AND ticket_id = ?"
+  ).get(req.userId, req.params.ticketId);
+  if (!row) return res.status(404).json({ error: "Análise não encontrada" });
+  res.json({
+    id: row.id,
+    ticket_id: row.ticket_id,
+    analysis_text: row.analysis_text,
+    model_used: row.model_used,
+    created_at: row.created_at,
+    cached: true,
+  });
+});
+
+app.get("/api/ai/analyses", authenticate, (req, res) => {
+  const rows = db.prepare(
+    "SELECT * FROM ai_analyses WHERE user_id = ? ORDER BY created_at DESC"
+  ).all(req.userId);
+  res.json(rows.map((r) => ({
+    id: r.id,
+    ticket_id: r.ticket_id,
+    analysis_text: r.analysis_text,
+    model_used: r.model_used,
+    created_at: r.created_at,
+    cached: true,
+  })));
+});
+
+app.delete("/api/ai/analyses/:ticketId", authenticate, (req, res) => {
+  db.prepare(
+    "DELETE FROM ai_analyses WHERE user_id = ? AND ticket_id = ?"
+  ).run(req.userId, req.params.ticketId);
+  res.json({ success: true });
 });
 
 // ─── Start ──────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import { loadGLPIConfig } from "@/services/glpiService";
 import { OverviewTab } from "@/components/dashboard/OverviewTab";
 import { SearchTab } from "@/components/dashboard/SearchTab";
 import { CustomDashboardsTab } from "@/components/dashboard/CustomDashboardsTab";
+import { AIAnalysisTab } from "@/components/dashboard/AIAnalysisTab";
 import { TicketDetailSheet } from "@/components/dashboard/TicketDetailSheet";
 
 const Dashboard = () => {
@@ -59,6 +60,7 @@ const Dashboard = () => {
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="search">Pesquisa</TabsTrigger>
           <TabsTrigger value="custom">Dashboards</TabsTrigger>
+          <TabsTrigger value="ai">Análise IA</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -71,6 +73,10 @@ const Dashboard = () => {
 
         <TabsContent value="custom">
           <CustomDashboardsTab onTicketClick={handleTicketClick} />
+        </TabsContent>
+
+        <TabsContent value="ai">
+          <AIAnalysisTab onTicketClick={handleTicketClick} />
         </TabsContent>
       </Tabs>
 
