@@ -106,6 +106,7 @@ export interface MonitorTicket {
   id: number;
   name: string;
   technician: string;
+  requester: string;
   status: number;
   priority: number;
   date: string;

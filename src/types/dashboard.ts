@@ -43,4 +43,5 @@ export interface TrackedTicketRow {
   requester: string;
   glpi_created_at: string | null;
   glpi_updated_at: string | null;
+  tags: string;
 }

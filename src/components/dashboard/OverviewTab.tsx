@@ -24,9 +24,10 @@ function toTrackedRow(t: MonitorTicket): TrackedTicketRow {
     status: mapGLPIStatus(t.status),
     priority: mapGLPIPriority(t.priority),
     assignee: t.technician || "Não atribuído",
-    requester: "",
+    requester: t.requester || "",
     glpi_created_at: t.date || null,
     glpi_updated_at: t.date_mod || null,
+    tags: t.tags || "",
   };
 }
 

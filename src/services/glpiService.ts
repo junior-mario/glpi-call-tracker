@@ -641,11 +641,12 @@ export async function searchTicketsByGroup(
         "forcedisplay[4]": "19", // Last update
         "forcedisplay[5]": "3",  // Priority
         "forcedisplay[6]": "5",  // Technician
+        "forcedisplay[7]": "4",  // Requester
         "range": `${rangeStart}-${rangeEnd}`,
       });
 
       if (tagField !== null) {
-        params.set("forcedisplay[7]", String(tagField));
+        params.set("forcedisplay[8]", String(tagField));
       }
 
       let criterionIndex = 0;
@@ -710,24 +711,26 @@ export async function searchTicketsByGroup(
 
     if (allRows.length === 0) return [];
 
-    // Resolve technician IDs to names
+    // Resolve technician and requester IDs to names
     const resolveUser = createUserResolver(config, sessionToken);
-    const techIds = new Set(
-      allRows.map((row) => Number(row["5"])).filter((id) => id > 0)
+    const userIds = new Set(
+      allRows.flatMap((row) => [Number(row["5"]), Number(row["4"])]).filter((id) => id > 0)
     );
     const nameMap = new Map<number, string>();
     await Promise.all(
-      Array.from(techIds).map(async (id) => {
+      Array.from(userIds).map(async (id) => {
         nameMap.set(id, await resolveUser(id));
       })
     );
 
     return allRows.map((row) => {
       const techId = Number(row["5"]);
+      const requesterId = Number(row["4"]);
       return {
         id: Number(row["2"]),
         name: String(row["1"] || ""),
         technician: nameMap.get(techId) ?? "",
+        requester: nameMap.get(requesterId) ?? "",
         status: Number(row["12"]),
         priority: Number(row["3"]),
         date: String(row["15"] || ""),

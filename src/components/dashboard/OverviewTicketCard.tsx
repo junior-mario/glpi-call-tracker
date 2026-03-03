@@ -4,12 +4,13 @@ import { Clock, Hourglass, User, Wrench, ExternalLink } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { TrackedTicketRow } from "@/types/dashboard";
-import { STATUS_BORDER_COLOR } from "./dashboardConstants";
+import { STATUS_BORDER_COLOR, getSLASolutionHours } from "./dashboardConstants";
 
 interface OverviewTicketCardProps {
   ticket: TrackedTicketRow;
   dateLabel: string;
   onTicketClick: (ticketId: string) => void;
+  hideIdleInfo?: boolean;
 }
 
 function getIdleBadge(updatedAt: string | null) {
@@ -30,6 +31,25 @@ function getIdleBadge(updatedAt: string | null) {
   );
 }
 
+function getSLABadge(ticket: TrackedTicketRow) {
+  if (!ticket.glpi_created_at) return null;
+  const slaHours = getSLASolutionHours(ticket.priority, ticket.tags);
+  const created = new Date(ticket.glpi_created_at);
+  const isClosed = ticket.status === "resolved" || ticket.status === "closed";
+  const endDate = isClosed && ticket.glpi_updated_at ? new Date(ticket.glpi_updated_at) : new Date();
+  const elapsedHours = differenceInHours(endDate, created);
+  const exceeded = elapsedHours >= slaHours;
+  return (
+    <span
+      className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+        exceeded ? "text-red-600 bg-red-500/10" : "text-green-600 bg-green-500/10"
+      }`}
+    >
+      {exceeded ? "SLA Estourado" : "SLA OK"}
+    </span>
+  );
+}
+
 function formatTimeSinceUpdate(updatedAt: string | null): string | null {
   if (!updatedAt) return null;
   const now = new Date();
@@ -43,10 +63,11 @@ function formatTimeSinceUpdate(updatedAt: string | null): string | null {
   return `${days}d`;
 }
 
-export function OverviewTicketCard({ ticket: t, dateLabel, onTicketClick }: OverviewTicketCardProps) {
+export function OverviewTicketCard({ ticket: t, dateLabel, onTicketClick, hideIdleInfo }: OverviewTicketCardProps) {
   const borderClass = STATUS_BORDER_COLOR[t.status] || "border-l-gray-300";
-  const idleBadge = getIdleBadge(t.glpi_updated_at);
-  const timeSince = formatTimeSinceUpdate(t.glpi_updated_at);
+  const idleBadge = hideIdleInfo ? null : getIdleBadge(t.glpi_updated_at);
+  const timeSince = hideIdleInfo ? null : formatTimeSinceUpdate(t.glpi_updated_at);
+  const slaBadge = getSLABadge(t);
 
   return (
     <div
@@ -59,6 +80,7 @@ export function OverviewTicketCard({ ticket: t, dateLabel, onTicketClick }: Over
         </span>
         <StatusBadge status={t.status as any} />
         <PriorityBadge priority={t.priority as any} />
+        {slaBadge}
         {idleBadge}
         <a
           href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${t.ticket_id}`}

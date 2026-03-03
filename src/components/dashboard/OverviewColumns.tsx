@@ -5,7 +5,7 @@ import { Plus, XCircle, RefreshCw, ArrowUp, ArrowDown } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { TrackedTicketRow } from "@/types/dashboard";
 import { OverviewTicketCard } from "./OverviewTicketCard";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, differenceInHours, differenceInMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 type SortField = "date" | "priority" | "status" | "technician";
@@ -95,6 +95,23 @@ function OpenedCards({ tickets, onTicketClick }: { tickets: TrackedTicketRow[]; 
   );
 }
 
+function formatResolutionTime(createdAt: string | null, closedAt: string | null): string {
+  if (!createdAt || !closedAt) return "";
+  const start = new Date(createdAt);
+  const end = new Date(closedAt);
+  const totalMins = differenceInMinutes(end, start);
+  if (totalMins < 1) return "<1min";
+  if (totalMins < 60) return `${totalMins}min`;
+  const totalHours = differenceInHours(end, start);
+  if (totalHours < 24) {
+    const remainMins = totalMins - totalHours * 60;
+    return remainMins > 0 ? `${totalHours}h ${remainMins}min` : `${totalHours}h`;
+  }
+  const totalDays = differenceInDays(end, start);
+  const remainHours = totalHours - totalDays * 24;
+  return remainHours > 0 ? `${totalDays}d ${remainHours}h` : `${totalDays}d`;
+}
+
 function ClosedCards({ tickets, onTicketClick }: { tickets: TrackedTicketRow[]; onTicketClick: (id: string) => void }) {
   return tickets.length === 0 ? (
     <p className="text-sm text-muted-foreground text-center py-4">Nenhum chamado fechado</p>
@@ -104,8 +121,9 @@ function ClosedCards({ tickets, onTicketClick }: { tickets: TrackedTicketRow[]; 
         <OverviewTicketCard
           key={t.ticket_id}
           ticket={t}
-          dateLabel={t.glpi_updated_at ? format(new Date(t.glpi_updated_at), "dd/MM/yy", { locale: ptBR }) : ""}
+          dateLabel={formatResolutionTime(t.glpi_created_at, t.glpi_updated_at)}
           onTicketClick={onTicketClick}
+          hideIdleInfo
         />
       ))}
     </div>

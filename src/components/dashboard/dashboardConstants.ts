@@ -34,6 +34,19 @@ export const PRIORITY_COLORS: Record<number, string> = {
   6: "#dc2626",
 };
 
+export const SLA_SOLUTION_HOURS: Record<string, number> = {
+  low: 72,
+  medium: 48,
+  high: 24,
+  urgent: 5,
+};
+
+export function getSLASolutionHours(priority: string, tags: string): number {
+  const tagList = tags.toLowerCase().split(/,\s*|;\s*|\$\$/).map((s) => s.trim());
+  if (tagList.includes("associado")) return 3;
+  return SLA_SOLUTION_HOURS[priority] ?? 72;
+}
+
 export const STATUS_BORDER_COLOR: Record<string, string> = {
   new: "border-l-status-new",
   "in-progress": "border-l-status-in-progress",
