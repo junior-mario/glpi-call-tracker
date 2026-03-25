@@ -219,42 +219,48 @@ export function CustomDashboardsTab({ onTicketClick }: CustomDashboardsTabProps)
       filtered = filtered.filter((t) => selected.filter_statuses!.includes(t.status));
     }
 
-    // Filter by technician (partial match, case-insensitive)
-    if (selected.filter_technician) {
-      const search = selected.filter_technician.toLowerCase();
-      filtered = filtered.filter((t) =>
-        (t.technician || "").toLowerCase().includes(search)
-      );
-    }
-
     return filtered.map(toTrackedRow);
   }, [tickets, selected]);
 
-  const recentOpened = useMemo(
-    () =>
-      filteredForColumns
-        .filter((t) => t.status !== "resolved" && t.status !== "closed")
-        .filter((t) => t.glpi_created_at),
-    [filteredForColumns]
-  );
+  const technicianSearch = (selected?.filter_technician || "").toLowerCase().trim();
 
-  const recentClosed = useMemo(
-    () =>
-      filteredForColumns
-        .filter((t) => t.status === "resolved" || t.status === "closed")
-        .filter((t) => t.glpi_updated_at),
-    [filteredForColumns]
-  );
+  const recentOpened = useMemo(() => {
+    let rows = filteredForColumns
+      .filter((t) => t.status !== "resolved" && t.status !== "closed")
+      .filter((t) => t.glpi_created_at);
 
-  const recentUpdated = useMemo(
-    () =>
-      filteredForColumns
-        .filter((t) => t.status !== "resolved" && t.status !== "closed")
-        .filter((t) => t.glpi_updated_at),
-    [filteredForColumns]
-  );
+    // In "opened", interpret selected technician as requester (solicitante).
+    if (technicianSearch) {
+      rows = rows.filter((t) => (t.requester || "").toLowerCase().includes(technicianSearch));
+    }
 
-  // ─── Handlers ────────────────────────────────────────────────
+    return rows;
+  }, [filteredForColumns, technicianSearch]);
+
+  const recentClosed = useMemo(() => {
+    let rows = filteredForColumns
+      .filter((t) => t.status === "resolved" || t.status === "closed")
+      .filter((t) => t.glpi_updated_at);
+
+    if (technicianSearch) {
+      rows = rows.filter((t) => (t.assignee || "").toLowerCase().includes(technicianSearch));
+    }
+
+    return rows;
+  }, [filteredForColumns, technicianSearch]);
+
+  const recentUpdated = useMemo(() => {
+    let rows = filteredForColumns
+      .filter((t) => t.status !== "resolved" && t.status !== "closed")
+      .filter((t) => t.glpi_updated_at);
+
+    if (technicianSearch) {
+      rows = rows.filter((t) => (t.assignee || "").toLowerCase().includes(technicianSearch));
+    }
+
+    return rows;
+  }, [filteredForColumns, technicianSearch]);
+
   const handleSave = async (data: Partial<CustomDashboard>) => {
     try {
       if (editingDash) {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -13,11 +14,44 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Settings, TestTube, CheckCircle, XCircle, Loader2, Eye, EyeOff, Save, Trash2, Timer, LayoutDashboard } from "lucide-react";
-import { GLPIConfig, GLPITestResult, GLPIGroupResponse } from "@/types/glpi";
-import { loadGLPIConfig, saveGLPIConfig, clearGLPIConfig, testGLPIConnection, fetchGLPIGroups } from "@/services/glpiService";
+import { GLPIConfig, GLPITestResult, GLPIGroupResponse, GLPIDebugMethod, GLPIDebugQueryResult } from "@/types/glpi";
+import { loadGLPIConfig, saveGLPIConfig, clearGLPIConfig, testGLPIConnection, fetchGLPIGroups, runGLPIDebugQuery } from "@/services/glpiService";
 
 interface ConfigPanelProps {
   onConfigSaved: () => void;
+}
+
+function formatDebugResult(result: GLPIDebugQueryResult): string {
+  const headers = Object.entries(result.responseHeaders)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\n");
+
+  const payload =
+    result.responseJson !== null
+      ? JSON.stringify(result.responseJson, null, 2)
+      : result.responseText || "(vazio)";
+
+  const body =
+    result.requestBody !== null
+      ? JSON.stringify(result.requestBody, null, 2)
+      : "(sem body)";
+
+  return [
+    `ok: ${result.ok}`,
+    `status: ${result.status} ${result.statusText}`,
+    `metodo: ${result.method}`,
+    `url-final: ${result.url}`,
+    `content-type: ${result.contentType || "n/a"}`,
+    "",
+    "request-body:",
+    body,
+    "",
+    "response-headers:",
+    headers || "(sem headers)",
+    "",
+    "response-payload:",
+    payload.length > 20000 ? `${payload.slice(0, 20000)}\n\n...[truncado]...` : payload,
+  ].join("\n");
 }
 
 export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
@@ -39,6 +73,13 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
   const [overviewGroup, setOverviewGroup] = useState<string>("all");
   const [overviewDays, setOverviewDays] = useState<number | "">(30);
 
+  const [debugMethod, setDebugMethod] = useState<GLPIDebugMethod>("GET");
+  const [debugEndpoint, setDebugEndpoint] = useState("/Group");
+  const [debugQueryString, setDebugQueryString] = useState("range=0-5&order=ASC");
+  const [debugBodyJson, setDebugBodyJson] = useState('{"criteria":[{"field":"12","searchtype":"equals","value":"2"}]}');
+  const [isDebugRunning, setIsDebugRunning] = useState(false);
+  const [debugOutput, setDebugOutput] = useState("");
+
   useEffect(() => {
     loadGLPIConfig().then((savedConfig) => {
       if (savedConfig) {
@@ -46,7 +87,7 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
         setHasConfig(true);
         setOverviewGroup(savedConfig.overviewGroupId ? String(savedConfig.overviewGroupId) : "all");
         setOverviewDays(savedConfig.overviewDays ?? "");
-        // Load groups once we know config exists
+
         setIsLoadingGroups(true);
         fetchGLPIGroups()
           .then(setGroups)
@@ -69,7 +110,7 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
       setHasConfig(true);
       onConfigSaved();
     } catch (error) {
-      console.error("Erro ao salvar configuração:", error);
+      console.error("Erro ao salvar configuracao:", error);
     } finally {
       setIsSaving(false);
     }
@@ -85,6 +126,12 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
     });
     setHasConfig(false);
     setTestResult(null);
+
+    setDebugOutput("");
+    setDebugMethod("GET");
+    setDebugEndpoint("/Group");
+    setDebugQueryString("range=0-5&order=ASC");
+    setDebugBodyJson('{"criteria":[{"field":"12","searchtype":"equals","value":"2"}]}');
   };
 
   const handleTest = async () => {
@@ -96,42 +143,61 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
     setIsTesting(false);
   };
 
-  const isConfigValid = config.baseUrl && config.appToken && config.userToken;
+  const isConfigValid = Boolean(config.baseUrl && config.appToken && config.userToken);
+
+  const handleDebugQuery = async () => {
+    if (!isConfigValid) return;
+
+    setIsDebugRunning(true);
+    setDebugOutput("");
+
+    try {
+      const result = await runGLPIDebugQuery(config, {
+        method: debugMethod,
+        endpoint: debugEndpoint,
+        queryString: debugQueryString,
+        bodyJson: debugBodyJson,
+      });
+      setDebugOutput(formatDebugResult(result));
+    } catch (error) {
+      setDebugOutput(`Erro ao executar consulta: ${error instanceof Error ? error.message : "Erro desconhecido"}`);
+    } finally {
+      setIsDebugRunning(false);
+    }
+  };
 
   return (
     <Card className="border-border/50">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <Settings className="h-5 w-5 text-primary" />
-          Configuração da API GLPI
+          Configuracao da API GLPI
         </CardTitle>
         <CardDescription>
-          Configure os parâmetros de conexão com a API do GLPI
+          Configure os parametros de conexao com a API do GLPI
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Base URL */}
         <div className="space-y-2">
           <Label htmlFor="baseUrl">URL Base da API</Label>
           <Input
             id="baseUrl"
             placeholder="https://seu-servidor-glpi.com"
             value={config.baseUrl}
-            onChange={(e) => setConfig({ ...config, baseUrl: e.target.value.replace(/\/+$/, '').replace(/\/apirest\.php$/i, '') })}
+            onChange={(e) => setConfig({ ...config, baseUrl: e.target.value.replace(/\/+$/, "").replace(/\/apirest\.php$/i, "") })}
           />
           <p className="text-xs text-muted-foreground">
             Apenas a URL do servidor GLPI, sem /apirest.php (ex: https://glpi.empresa.com)
           </p>
         </div>
 
-        {/* App Token */}
         <div className="space-y-2">
           <Label htmlFor="appToken">App Token</Label>
           <div className="relative">
             <Input
               id="appToken"
               type={showAppToken ? "text" : "password"}
-              placeholder="Token da aplicação"
+              placeholder="Token da aplicacao"
               value={config.appToken}
               onChange={(e) => setConfig({ ...config, appToken: e.target.value })}
               className="pr-10"
@@ -147,18 +213,17 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Token gerado em Configuração → Geral → API → Token de aplicação cliente
+            Token gerado em Configuracao -&gt; Geral -&gt; API -&gt; Token de aplicacao cliente
           </p>
         </div>
 
-        {/* User Token */}
         <div className="space-y-2">
           <Label htmlFor="userToken">User Token</Label>
           <div className="relative">
             <Input
               id="userToken"
               type={showUserToken ? "text" : "password"}
-              placeholder="Token do usuário"
+              placeholder="Token do usuario"
               value={config.userToken}
               onChange={(e) => setConfig({ ...config, userToken: e.target.value })}
               className="pr-10"
@@ -174,17 +239,16 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Token pessoal em Minhas configurações → Controle remoto → Token de acesso pessoal
+            Token pessoal em Minhas configuracoes -&gt; Controle remoto -&gt; Token de acesso pessoal
           </p>
         </div>
 
         <Separator />
 
-        {/* Poll Interval */}
         <div className="space-y-2">
           <Label className="flex items-center gap-2">
             <Timer className="h-4 w-4 text-primary" />
-            Intervalo de atualização (minutos)
+            Intervalo de atualizacao (minutos)
           </Label>
           <div className="flex gap-2">
             {[5, 10, 15, 30].map((v) => (
@@ -208,33 +272,30 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            Frequência com que os chamados monitorados são atualizados automaticamente
+            Frequencia com que os chamados monitorados sao atualizados automaticamente
           </p>
         </div>
 
         <Separator />
 
-        {/* Overview Settings */}
         <div className="space-y-4">
           <h4 className="font-medium text-sm flex items-center gap-2">
             <LayoutDashboard className="h-4 w-4 text-primary" />
-            Visão Geral do Dashboard
+            Visao Geral do Dashboard
           </h4>
           <p className="text-xs text-muted-foreground">
-            Configure o grupo e o período para a aba "Visão Geral" do Dashboard.
+            Configure o grupo e o periodo para a aba "Visao Geral" do Dashboard.
           </p>
 
           <div className="space-y-2">
-            <Label>Grupo Técnico</Label>
+            <Label>Grupo Tecnico</Label>
             <Select
               value={overviewGroup}
               onValueChange={setOverviewGroup}
               disabled={isLoadingGroups || !hasConfig}
             >
               <SelectTrigger>
-                <SelectValue
-                  placeholder={isLoadingGroups ? "Carregando..." : "Todos os grupos"}
-                />
+                <SelectValue placeholder={isLoadingGroups ? "Carregando..." : "Todos os grupos"} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os grupos</SelectItem>
@@ -248,9 +309,9 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
           </div>
 
           <div className="space-y-2">
-            <Label>Período</Label>
+            <Label>Periodo</Label>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Últimos</span>
+              <span className="text-sm text-muted-foreground">Ultimos</span>
               <Input
                 type="number"
                 min={1}
@@ -282,7 +343,6 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="flex gap-3">
           <Button onClick={handleSave} disabled={!isConfigValid || isSaving} className="flex-1">
             {isSaving ? (
@@ -290,7 +350,7 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
             ) : (
               <Save className="h-4 w-4 mr-2" />
             )}
-            Salvar Configuração
+            Salvar Configuracao
           </Button>
           {hasConfig && (
             <Button variant="outline" onClick={handleClear}>
@@ -302,12 +362,11 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
 
         <Separator />
 
-        {/* Test Section */}
         <div className="space-y-4">
-          <h4 className="font-medium text-sm">Testar Conexão</h4>
+          <h4 className="font-medium text-sm">Testar Conexao</h4>
 
           <div className="space-y-2">
-            <Label htmlFor="testTicketId">Número do Chamado (opcional)</Label>
+            <Label htmlFor="testTicketId">Numero do Chamado (opcional)</Label>
             <Input
               id="testTicketId"
               placeholder="Ex: 1234"
@@ -315,7 +374,7 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
               onChange={(e) => setTestTicketId(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Informe um número de chamado para testar a busca completa
+              Informe um numero de chamado para testar a busca completa
             </p>
           </div>
 
@@ -333,12 +392,11 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
             ) : (
               <>
                 <TestTube className="h-4 w-4 mr-2" />
-                Testar Conexão
+                Testar Conexao
               </>
             )}
           </Button>
 
-          {/* Test Result */}
           {testResult && (
             <Alert variant={testResult.success ? "default" : "destructive"}>
               {testResult.success ? (
@@ -347,14 +405,14 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
                 <XCircle className="h-4 w-4" />
               )}
               <AlertTitle>
-                {testResult.success ? "Sucesso!" : "Erro na Conexão"}
+                {testResult.success ? "Sucesso!" : "Erro na Conexao"}
               </AlertTitle>
               <AlertDescription className="mt-2">
                 {testResult.message}
                 {testResult.ticketData && (
                   <div className="mt-3 p-3 bg-muted rounded-md text-sm">
                     <p><strong>ID:</strong> {testResult.ticketData.id}</p>
-                    <p><strong>Título:</strong> {testResult.ticketData.name}</p>
+                    <p><strong>Titulo:</strong> {testResult.ticketData.name}</p>
                     <p><strong>Status:</strong> {testResult.ticketData.status}</p>
                     <p><strong>Prioridade:</strong> {testResult.ticketData.priority}</p>
                   </div>
@@ -363,7 +421,105 @@ export function ConfigPanel({ onConfigSaved }: ConfigPanelProps) {
             </Alert>
           )}
         </div>
+
+        <Separator />
+
+        <div className="space-y-4">
+          <h4 className="font-medium text-sm">Console de consulta da API (debug)</h4>
+          <p className="text-xs text-muted-foreground">
+            Execute consultas manuais na API do GLPI para inspecionar status HTTP, headers e payload bruto.
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="debugMethod">Metodo</Label>
+              <Select
+                value={debugMethod}
+                onValueChange={(value) => setDebugMethod(value as GLPIDebugMethod)}
+                disabled={!isConfigValid || isDebugRunning}
+              >
+                <SelectTrigger id="debugMethod">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="GET">GET</SelectItem>
+                  <SelectItem value="POST">POST</SelectItem>
+                  <SelectItem value="PUT">PUT</SelectItem>
+                  <SelectItem value="DELETE">DELETE</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="debugEndpoint">Endpoint</Label>
+              <Input
+                id="debugEndpoint"
+                placeholder="/Group"
+                value={debugEndpoint}
+                disabled={isDebugRunning}
+                onChange={(e) => setDebugEndpoint(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="debugQuery">Query string (opcional)</Label>
+            <Input
+              id="debugQuery"
+              placeholder="Ex: range=0-50&order=ASC"
+              value={debugQueryString}
+              disabled={isDebugRunning}
+              onChange={(e) => setDebugQueryString(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="debugBody">Body JSON (opcional)</Label>
+            <Textarea
+              id="debugBody"
+              className="min-h-[110px] font-mono text-xs"
+              placeholder='{"criteria":[{"field":"12","searchtype":"equals","value":"2"}]}'
+              value={debugBodyJson}
+              disabled={isDebugRunning}
+              onChange={(e) => setDebugBodyJson(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              O body e ignorado para metodos GET e DELETE.
+            </p>
+          </div>
+
+          <Button
+            onClick={handleDebugQuery}
+            disabled={!isConfigValid || isDebugRunning}
+            variant="secondary"
+            className="w-full"
+          >
+            {isDebugRunning ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Executando...
+              </>
+            ) : (
+              <>
+                <TestTube className="h-4 w-4 mr-2" />
+                Executar consulta
+              </>
+            )}
+          </Button>
+
+          <div className="space-y-2">
+            <Label htmlFor="debugOutput">Retorno da consulta</Label>
+            <Textarea
+              id="debugOutput"
+              readOnly
+              className="min-h-[220px] font-mono text-xs"
+              value={debugOutput}
+              placeholder="Resultado detalhado da consulta aparecera aqui..."
+            />
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
 }
+

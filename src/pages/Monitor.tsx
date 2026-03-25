@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Search, Loader2, Plus, Check } from "lucide-react";
@@ -166,8 +166,8 @@ const Monitor = () => {
     if (dateMode === "relative") {
       if (!relativeDays || relativeDays <= 0) {
         toast({
-          title: "Período inválido",
-          description: "Informe uma quantidade de dias válida.",
+          title: "PerÃ­odo invÃ¡lido",
+          description: "Informe uma quantidade de dias vÃ¡lida.",
           variant: "destructive",
         });
         return;
@@ -177,8 +177,8 @@ const Monitor = () => {
     } else {
       if (!dateFrom || !dateTo) {
         toast({
-          title: "Preencha o período",
-          description: "Selecione as datas de início e fim.",
+          title: "Preencha o perÃ­odo",
+          description: "Selecione as datas de inÃ­cio e fim.",
           variant: "destructive",
         });
         return;
@@ -216,8 +216,8 @@ const Monitor = () => {
       const ticket = await fetchGLPITicket(id);
       if (!ticket) {
         toast({
-          title: "Chamado não encontrado",
-          description: `Não foi possível carregar o chamado #${id}.`,
+          title: "Chamado nÃ£o encontrado",
+          description: `NÃ£o foi possÃ­vel carregar o chamado #${id}.`,
           variant: "destructive",
         });
         return;
@@ -285,7 +285,7 @@ const Monitor = () => {
         <Card>
           <CardContent className="py-10 flex items-center justify-center gap-2 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
-            Carregando configuração...
+            Carregando configuraÃ§Ã£o...
           </CardContent>
         </Card>
       </div>
@@ -297,7 +297,7 @@ const Monitor = () => {
       <div className="container py-6 mx-auto max-w-[1164px]">
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
-            Configure a API GLPI em <strong>Configurações</strong> para usar o monitoramento.
+            Configure a API GLPI em <strong>ConfiguraÃ§Ãµes</strong> para usar o monitoramento.
           </CardContent>
         </Card>
       </div>
@@ -312,7 +312,7 @@ const Monitor = () => {
           <div className="flex flex-wrap items-end gap-4">
             {/* Group selector */}
             <div className="flex flex-col gap-1.5 min-w-[220px] flex-1">
-              <Label htmlFor="group-select">Grupo Técnico</Label>
+              <Label htmlFor="group-select">Grupo TÃ©cnico</Label>
               <Select
                 value={selectedGroup}
                 onValueChange={setSelectedGroup}
@@ -336,13 +336,13 @@ const Monitor = () => {
 
             {/* Date mode selector */}
             <div className="flex flex-col gap-1.5">
-              <Label>Período</Label>
+              <Label>PerÃ­odo</Label>
               <Select value={dateMode} onValueChange={(v) => setDateMode(v as "relative" | "custom")}>
                 <SelectTrigger className="w-[160px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="relative">Últimos dias</SelectItem>
+                  <SelectItem value="relative">Ãšltimos dias</SelectItem>
                   <SelectItem value="custom">Personalizado</SelectItem>
                 </SelectContent>
               </Select>
@@ -393,7 +393,7 @@ const Monitor = () => {
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "Início"}
+                        {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "InÃ­cio"}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
@@ -410,7 +410,7 @@ const Monitor = () => {
 
                 {/* Date To */}
                 <div className="flex flex-col gap-1.5">
-                  <Label>Até</Label>
+                  <Label>AtÃ©</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -447,7 +447,7 @@ const Monitor = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="unsolved">Não solucionados</SelectItem>
+                  <SelectItem value="unsolved">NÃ£o solucionados</SelectItem>
                   <SelectItem value="1">Novo</SelectItem>
                   <SelectItem value="2">Em andamento</SelectItem>
                   <SelectItem value="3">Pendente</SelectItem>
@@ -468,17 +468,17 @@ const Monitor = () => {
                   <SelectItem value="all">Todas</SelectItem>
                   <SelectItem value="1">Muito baixa</SelectItem>
                   <SelectItem value="2">Baixa</SelectItem>
-                  <SelectItem value="3">Média</SelectItem>
+                  <SelectItem value="3">MÃ©dia</SelectItem>
                   <SelectItem value="4">Alta</SelectItem>
                   <SelectItem value="5">Muito alta</SelectItem>
-                  <SelectItem value="6">Crítica</SelectItem>
+                  <SelectItem value="6">CrÃ­tica</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {/* Technician filter */}
             <div className="flex flex-col gap-1.5 min-w-[180px]">
-              <Label htmlFor="technician-filter">Técnico</Label>
+              <Label htmlFor="technician-filter">TÃ©cnico</Label>
               <Select value={technicianFilter} onValueChange={setTechnicianFilter}>
                 <SelectTrigger id="technician-filter">
                   <SelectValue placeholder="Todos" />
@@ -556,12 +556,12 @@ const Monitor = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[80px]">ID</TableHead>
-                    <TableHead>Título</TableHead>
-                    <TableHead className="w-[150px]">Técnico</TableHead>
+                    <TableHead>TÃ­tulo</TableHead>
+                    <TableHead className="w-[150px]">TÃ©cnico</TableHead>
                     <TableHead className="w-[130px]">Status</TableHead>
                     <TableHead className="w-[110px]">Prioridade</TableHead>
                     <TableHead className="w-[120px]">Abertura</TableHead>
-                    <TableHead className="w-[120px]">Atualização</TableHead>
+                    <TableHead className="w-[120px]">AtualizaÃ§Ã£o</TableHead>
                     <TableHead className="w-[150px]">Tags</TableHead>
                     <TableHead className="w-[50px]" />
                   </TableRow>
@@ -610,7 +610,7 @@ const Monitor = () => {
                                 <Check className="h-4 w-4 text-muted-foreground" />
                               </div>
                             </TooltipTrigger>
-                            <TooltipContent>Já acompanhado</TooltipContent>
+                            <TooltipContent>JÃ¡ acompanhado</TooltipContent>
                           </Tooltip>
                         ) : (
                           <Tooltip>
@@ -646,3 +646,5 @@ const Monitor = () => {
 };
 
 export default Monitor;
+
+

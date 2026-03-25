@@ -1,4 +1,4 @@
-import { format, differenceInDays, differenceInHours, differenceInMinutes } from "date-fns";
+﻿import { format, differenceInDays, differenceInHours, differenceInMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Clock, Hourglass, User, Wrench, ExternalLink } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -72,26 +72,32 @@ export function OverviewTicketCard({ ticket: t, dateLabel, onTicketClick, hideId
   return (
     <div
       onClick={() => onTicketClick(t.ticket_id)}
-      className={`block rounded-lg border border-l-4 ${borderClass} bg-card p-4 hover:shadow-md transition-shadow cursor-pointer`}
+      className={`block rounded border border-l-4 ${borderClass} bg-card p-4 hover:shadow-md transition-shadow cursor-pointer`}
     >
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-          #{t.ticket_id}
-        </span>
-        <StatusBadge status={t.status as any} />
-        <PriorityBadge priority={t.priority as any} />
-        {slaBadge}
-        {idleBadge}
-        <a
-          href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${t.ticket_id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="ml-auto text-muted-foreground hover:text-primary"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
+      <div className="mb-2 flex items-start gap-2">
+        <div className="min-w-0 flex flex-1 flex-wrap items-center gap-2">
+          <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            #{t.ticket_id}
+          </span>
+          <StatusBadge status={t.status as any} />
+          <PriorityBadge priority={t.priority as any} />
+          {slaBadge}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          {idleBadge}
+          <a
+            href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${t.ticket_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-primary"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        </div>
       </div>
+
       <p className="text-sm font-medium leading-snug text-foreground mb-2 line-clamp-2">{t.title}</p>
       <div className="space-y-1 text-xs text-muted-foreground">
         <div className="flex items-center gap-1.5">
@@ -100,7 +106,7 @@ export function OverviewTicketCard({ ticket: t, dateLabel, onTicketClick, hideId
         </div>
         <div className="flex items-center gap-1.5">
           <Wrench className="h-3 w-3 shrink-0" />
-          <span className="truncate">{t.assignee || "Não atribuído"}</span>
+          <span className="truncate">{t.assignee || "NÃ£o atribuÃ­do"}</span>
         </div>
         <div className="flex items-center justify-between pt-1">
           <span>
@@ -122,3 +128,6 @@ export function OverviewTicketCard({ ticket: t, dateLabel, onTicketClick, hideId
     </div>
   );
 }
+
+
+

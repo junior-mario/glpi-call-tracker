@@ -1,4 +1,4 @@
-import { GLPIConfig, GLPISessionResponse, GLPITicketResponse, GLPIFollowupResponse, GLPISolutionResponse, GLPITaskResponse, GLPIValidationResponse, GLPIDocumentItemResponse, GLPIDocumentResponse, GLPIUserResponse, GLPITestResult, GLPIGroupResponse, GLPISearchResponse, MonitorTicket } from "@/types/glpi";
+import { GLPIConfig, GLPISessionResponse, GLPITicketResponse, GLPIFollowupResponse, GLPISolutionResponse, GLPITaskResponse, GLPIValidationResponse, GLPIDocumentItemResponse, GLPIDocumentResponse, GLPIUserResponse, GLPITestResult, GLPIGroupResponse, GLPISearchResponse, MonitorTicket, GLPIDebugMethod, GLPIDebugQueryInput, GLPIDebugQueryResult } from "@/types/glpi";
 import { Ticket, TicketStatus, TicketUpdate } from "@/types/ticket";
 import { api } from "@/lib/api";
 
@@ -155,6 +155,102 @@ function parseGLPIError(data: unknown): string {
   return "";
 }
 
+function normalizeDebugEndpoint(endpoint: string): string {
+  const trimmed = (endpoint || "").trim();
+  const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const withoutApiPrefix = withLeadingSlash.replace(/^\/apirest\.php/i, "");
+  return withoutApiPrefix === "/" || withoutApiPrefix === "" ? "/Group" : withoutApiPrefix;
+}
+
+function collectResponseHeaders(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    out[key] = value;
+  });
+  return out;
+}
+
+async function parseResponsePayload(response: Response): Promise<{
+  contentType: string;
+  responseText: string;
+  responseJson: unknown | null;
+}> {
+  const contentType = response.headers.get("content-type") || "";
+  const responseText = await response.text();
+  const trimmed = responseText.trim();
+  let responseJson: unknown | null = null;
+
+  const shouldTryJson =
+    contentType.toLowerCase().includes("application/json") ||
+    trimmed.startsWith("{") ||
+    trimmed.startsWith("[");
+
+  if (shouldTryJson && trimmed) {
+    try {
+      responseJson = JSON.parse(trimmed);
+    } catch {
+      responseJson = null;
+    }
+  }
+
+  return { contentType, responseText, responseJson };
+}
+
+export async function runGLPIDebugQuery(
+  config: GLPIConfig,
+  input: GLPIDebugQueryInput
+): Promise<GLPIDebugQueryResult> {
+  const method: GLPIDebugMethod = input.method;
+  const endpoint = normalizeDebugEndpoint(input.endpoint);
+  const query = (input.queryString || "").trim().replace(/^\?/, "");
+  const url = `${getApiBaseUrl(config)}/apirest.php${endpoint}${query ? `?${query}` : ""}`;
+
+  let requestBody: string | undefined = undefined;
+  let parsedRequestBody: unknown | null = null;
+
+  if (method !== "GET" && method !== "DELETE") {
+    const bodyText = (input.bodyJson || "").trim();
+    if (bodyText) {
+      try {
+        parsedRequestBody = JSON.parse(bodyText);
+        requestBody = JSON.stringify(parsedRequestBody);
+      } catch {
+        throw new Error("Body JSON invalido. Corrija e tente novamente.");
+      }
+    }
+  }
+
+  const sessionToken = await initSession(config);
+
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        "App-Token": config.appToken,
+        "Session-Token": sessionToken,
+        ...(requestBody ? { "Content-Type": "application/json" } : {}),
+      },
+      body: requestBody,
+    });
+
+    const payload = await parseResponsePayload(response);
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      url,
+      method,
+      contentType: payload.contentType,
+      requestBody: parsedRequestBody,
+      responseHeaders: collectResponseHeaders(response.headers),
+      responseJson: payload.responseJson,
+      responseText: payload.responseText,
+    };
+  } finally {
+    await killSession(config, sessionToken);
+  }
+}
 // Map GLPI status codes to our status
 export function mapGLPIStatus(status: number): TicketStatus {
   switch (status) {
@@ -190,14 +286,44 @@ async function initSession(config: GLPIConfig): Promise<string> {
     },
   });
 
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    const detail = parseGLPIError(body);
-    throw new Error(detail || `Erro ao iniciar sessão (HTTP ${response.status})`);
+  const contentType = response.headers.get("content-type") || "";
+  const rawText = await response.text();
+  const trimmed = rawText.trim();
+
+  let parsed: unknown = null;
+  if (trimmed) {
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      parsed = null;
+    }
   }
 
-  const data: GLPISessionResponse = await response.json();
-  return data.session_token;
+  if (!response.ok) {
+    const detail = parseGLPIError(parsed);
+    const preview = trimmed.replace(/\s+/g, " ").slice(0, 350);
+    throw new Error(
+      detail ||
+      `Erro ao iniciar sessao (HTTP ${response.status}; content-type: ${contentType || "n/a"}). Preview: ${preview}`
+    );
+  }
+
+  const sessionToken =
+    parsed &&
+    typeof parsed === "object" &&
+    "session_token" in parsed &&
+    typeof (parsed as GLPISessionResponse).session_token === "string"
+      ? (parsed as GLPISessionResponse).session_token
+      : "";
+
+  if (!sessionToken) {
+    const preview = trimmed.replace(/\s+/g, " ").slice(0, 350);
+    throw new Error(
+      `initSession retornou resposta nao JSON ou sem session_token (HTTP ${response.status}; content-type: ${contentType || "n/a"}). Preview: ${preview}`
+    );
+  }
+
+  return sessionToken;
 }
 
 async function killSession(config: GLPIConfig, sessionToken: string): Promise<void> {
@@ -711,10 +837,13 @@ export async function searchTicketsByGroup(
 
     if (allRows.length === 0) return [];
 
-    // Resolve technician and requester IDs to names
+    // Resolve technician and requester IDs to names.
+    // Some GLPI instances return raw text in these fields instead of numeric IDs.
     const resolveUser = createUserResolver(config, sessionToken);
     const userIds = new Set(
-      allRows.flatMap((row) => [Number(row["5"]), Number(row["4"])]).filter((id) => id > 0)
+      allRows
+        .flatMap((row) => [Number(row["5"]), Number(row["4"])])
+        .filter((id) => Number.isFinite(id) && id > 0)
     );
     const nameMap = new Map<number, string>();
     await Promise.all(
@@ -724,13 +853,40 @@ export async function searchTicketsByGroup(
     );
 
     return allRows.map((row) => {
-      const techId = Number(row["5"]);
-      const requesterId = Number(row["4"]);
+      const techRaw = row["5"];
+      const requesterRaw = row["4"];
+      const techId = Number(techRaw);
+      const requesterId = Number(requesterRaw);
+
+      const techText =
+        techRaw === null || techRaw === undefined
+          ? ""
+          : typeof techRaw === "string"
+          ? techRaw
+          : String(techRaw);
+
+      const requesterText =
+        requesterRaw === null || requesterRaw === undefined
+          ? ""
+          : typeof requesterRaw === "string"
+          ? requesterRaw
+          : String(requesterRaw);
+
+      const technician =
+        Number.isFinite(techId) && techId > 0
+          ? nameMap.get(techId) ?? techText
+          : techText;
+
+      const requester =
+        Number.isFinite(requesterId) && requesterId > 0
+          ? nameMap.get(requesterId) ?? requesterText
+          : requesterText;
+
       return {
         id: Number(row["2"]),
         name: String(row["1"] || ""),
-        technician: nameMap.get(techId) ?? "",
-        requester: nameMap.get(requesterId) ?? "",
+        technician,
+        requester,
         status: Number(row["12"]),
         priority: Number(row["3"]),
         date: String(row["15"] || ""),

@@ -1,14 +1,26 @@
-import { Ticket } from "@/types/ticket";
+﻿import { Ticket } from "@/types/ticket";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
 import { Timeline } from "./Timeline";
-import { Bell, Clock, User, Users, X, ChevronDown, ChevronUp, Hourglass, MessageCircle, ClipboardCopy } from "lucide-react";
-import { format, differenceInDays } from "date-fns";
+import {
+  Bell,
+  Clock,
+  User,
+  Users,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Hourglass,
+  MessageCircle,
+  ClipboardCopy,
+} from "lucide-react";
+import { format, differenceInDays, differenceInHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { getSLASolutionHours } from "@/components/dashboard/dashboardConstants";
 
 interface TicketCardProps {
   ticket: Ticket;
@@ -35,7 +47,7 @@ function IdleBadge({ updatedAt }: { updatedAt: string }) {
   return (
     <span
       className={`inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded ${style}`}
-      title={`${days === 0 ? "Atualizado hoje" : `${days} dia${days > 1 ? "s" : ""} sem interação`}`}
+      title={`${days === 0 ? "Atualizado hoje" : `${days} dia${days > 1 ? "s" : ""} sem interacao`}`}
     >
       <Hourglass className="h-3 w-3" />
       {label}
@@ -43,7 +55,36 @@ function IdleBadge({ updatedAt }: { updatedAt: string }) {
   );
 }
 
-export function TicketCard({ ticket, onRemove, onMarkAsRead, isSelected, onToggleSelect, onCobrar, onCopyText }: TicketCardProps) {
+function SLABadge({ ticket }: { ticket: Ticket }) {
+  if (!ticket.createdAt) return null;
+
+  const slaHours = getSLASolutionHours(ticket.priority, "");
+  const created = new Date(ticket.createdAt);
+  const isClosed = ticket.status === "resolved" || ticket.status === "closed";
+  const endDate = isClosed && ticket.updatedAt ? new Date(ticket.updatedAt) : new Date();
+  const elapsedHours = differenceInHours(endDate, created);
+  const exceeded = elapsedHours >= slaHours;
+
+  return (
+    <span
+      className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+        exceeded ? "text-red-600 bg-red-500/10" : "text-green-600 bg-green-500/10"
+      }`}
+    >
+      {exceeded ? "SLA Estourado" : "SLA OK"}
+    </span>
+  );
+}
+
+export function TicketCard({
+  ticket,
+  onRemove,
+  onMarkAsRead,
+  isSelected,
+  onToggleSelect,
+  onCobrar,
+  onCopyText,
+}: TicketCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -66,60 +107,66 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead, isSelected, onToggl
       onDragEnd={() => setIsDragging(false)}
       className={`relative overflow-hidden transition-all duration-300 hover:shadow-lg animate-slide-up cursor-grab active:cursor-grabbing ${isDragging ? "opacity-50" : ""}`}
     >
-      {/* Update indicator — red dot */}
       {ticket.hasNewUpdates && (
         <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full animate-pulse z-10" />
       )}
 
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              {onToggleSelect && (
-                <Checkbox
-                  checked={isSelected}
-                  onCheckedChange={() => onToggleSelect(ticket.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                />
-              )}
-              <a
-                href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${ticket.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded hover:opacity-80 no-underline"
+        <div className="mb-2 flex items-start gap-2">
+          <div className="min-w-0 flex flex-1 flex-wrap items-center gap-2">
+            {onToggleSelect && (
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => onToggleSelect(ticket.id)}
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
-                draggable={false}
-              >
-                #{ticket.id}
-              </a>
-              <StatusBadge status={ticket.status} />
-              <PriorityBadge priority={ticket.priority} />
-              <IdleBadge updatedAt={ticket.updatedAt} />
-              {ticket.hasNewUpdates && (
-                <div className="flex items-center gap-1 text-red-500 animate-pulse-slow">
-                  <Bell className="h-3.5 w-3.5" />
-                  <span className="text-xs font-medium">Nova atualização</span>
-                </div>
-              )}
-            </div>
-            <h3 className="font-semibold text-foreground leading-tight truncate">
-              {ticket.title}
-            </h3>
+              />
+            )}
+
+            <a
+              href={`https://helpdesk.quintadabaroneza.com.br/front/ticket.form.php?id=${ticket.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded hover:opacity-80 no-underline"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              draggable={false}
+            >
+              #{ticket.id}
+            </a>
+
+            <StatusBadge status={ticket.status} />
+            <PriorityBadge priority={ticket.priority} />
+            <SLABadge ticket={ticket} />
+
+            {ticket.hasNewUpdates && (
+              <div className="inline-flex items-center gap-1 text-red-500 animate-pulse-slow">
+                <Bell className="h-3.5 w-3.5" />
+                <span className="text-xs font-medium">Nova atualizacao</span>
+              </div>
+            )}
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-            onClick={() => onRemove(ticket.id)}
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <IdleBadge updatedAt={ticket.updatedAt} />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(ticket.id);
+              }}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
-        {/* Meta info */}
+        <h3 className="font-semibold text-foreground leading-tight truncate">
+          {ticket.title}
+        </h3>
+
         <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground mt-3">
           <div className="flex items-center gap-1.5">
             <User className="h-3.5 w-3.5" />
@@ -127,7 +174,7 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead, isSelected, onToggl
           </div>
           <div className="flex items-center gap-1.5">
             <Users className="h-3.5 w-3.5" />
-            <span>Atribuído: {ticket.assignee}</span>
+            <span>Atribuido: {ticket.assignee}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5" />
@@ -138,7 +185,6 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead, isSelected, onToggl
         </div>
       </CardHeader>
 
-      {/* Expand/Collapse toggle + Cobrar */}
       <div className="px-6 pb-2 flex gap-2">
         <Button
           variant="ghost"
@@ -149,32 +195,40 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead, isSelected, onToggl
           {isExpanded ? (
             <>
               <ChevronUp className="h-4 w-4 mr-2" />
-              Ocultar histórico
+              Ocultar historico
             </>
           ) : (
             <>
               <ChevronDown className="h-4 w-4 mr-2" />
-              Ver histórico ({ticket.updates.length} atualizações)
+              Ver historico ({ticket.updates.length} atualizacoes)
             </>
           )}
         </Button>
+
         {onCobrar && (
           <Button
             variant="ghost"
             size="sm"
             className="text-green-600 hover:text-green-700 hover:bg-green-50"
-            onClick={(e) => { e.stopPropagation(); onCobrar(ticket); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCobrar(ticket);
+            }}
           >
             <MessageCircle className="h-4 w-4 mr-1" />
             WhatsApp
           </Button>
         )}
+
         {onCopyText && (
           <Button
             variant="ghost"
             size="sm"
             className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-            onClick={(e) => { e.stopPropagation(); onCopyText(ticket); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCopyText(ticket);
+            }}
           >
             <ClipboardCopy className="h-4 w-4 mr-1" />
             Copiar
@@ -182,7 +236,6 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead, isSelected, onToggl
         )}
       </div>
 
-      {/* Timeline */}
       {isExpanded && (
         <CardContent className="pt-0 animate-fade-in">
           <div className="border-t border-border pt-4">
@@ -193,3 +246,6 @@ export function TicketCard({ ticket, onRemove, onMarkAsRead, isSelected, onToggl
     </Card>
   );
 }
+
+
+

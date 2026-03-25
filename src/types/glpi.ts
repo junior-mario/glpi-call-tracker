@@ -88,6 +88,27 @@ export interface GLPITestResult {
   ticketData?: GLPITicketResponse;
 }
 
+export type GLPIDebugMethod = "GET" | "POST" | "PUT" | "DELETE";
+
+export interface GLPIDebugQueryInput {
+  method: GLPIDebugMethod;
+  endpoint: string;
+  queryString?: string;
+  bodyJson?: string;
+}
+
+export interface GLPIDebugQueryResult {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  url: string;
+  method: GLPIDebugMethod;
+  contentType: string;
+  requestBody: unknown | null;
+  responseHeaders: Record<string, string>;
+  responseJson: unknown | null;
+  responseText: string;
+}
 export interface GLPIGroupResponse {
   id: number;
   name: string;

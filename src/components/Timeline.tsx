@@ -1,4 +1,4 @@
-import { TicketUpdate } from "@/types/ticket";
+﻿import { TicketUpdate } from "@/types/ticket";
 import { MessageSquare, RefreshCw, UserCheck, CheckCircle, ClipboardList, ShieldCheck, Paperclip } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -14,12 +14,12 @@ const updateTypeIcons = {
 };
 
 const updateTypeLabels = {
-  comment: "Comentário",
-  status_change: "Mudança de Status",
-  assignment: "Atribuição",
-  solution: "Solução",
+  comment: "ComentÃ¡rio",
+  status_change: "MudanÃ§a de Status",
+  assignment: "AtribuiÃ§Ã£o",
+  solution: "SoluÃ§Ã£o",
   task: "Tarefa",
-  validation: "Validação",
+  validation: "ValidaÃ§Ã£o",
   attachment: "Anexo",
 };
 
@@ -41,7 +41,7 @@ export function Timeline({ updates }: TimelineProps) {
   if (updates.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-4 text-center">
-        Nenhuma atualização ainda
+        Nenhuma atualizaÃ§Ã£o ainda
       </p>
     );
   }
@@ -67,12 +67,12 @@ export function Timeline({ updates }: TimelineProps) {
             {/* Content */}
             <div className="flex-1 pb-4">
               <div className="flex items-center gap-2 mb-1">
-                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${updateTypeBadgeColors[update.type]}`}>
+                <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${updateTypeBadgeColors[update.type]}`}>
                   <Icon className="h-3 w-3" />
                   {updateTypeLabels[update.type]}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {format(new Date(update.date), "dd MMM yyyy 'às' HH:mm", { locale: ptBR })}
+                  {format(new Date(update.date), "dd MMM yyyy 'Ã s' HH:mm", { locale: ptBR })}
                 </span>
               </div>
               <p className="text-sm font-medium text-foreground mb-1">
@@ -89,3 +89,5 @@ export function Timeline({ updates }: TimelineProps) {
     </div>
   );
 }
+
+
