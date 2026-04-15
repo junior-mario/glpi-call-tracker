@@ -1,4 +1,4 @@
-﻿import { Ticket } from "@/types/ticket";
+import { Ticket, TicketUpdate } from "@/types/ticket";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityBadge } from "./PriorityBadge";
@@ -20,7 +20,10 @@ import { ptBR } from "date-fns/locale";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { getSLASolutionHours } from "@/components/dashboard/dashboardConstants";
+import {
+  getSLAFirstInteractionHours,
+  getSLASolutionHours,
+} from "@/components/dashboard/dashboardConstants";
 
 interface TicketCardProps {
   ticket: Ticket;
@@ -72,6 +75,61 @@ function SLABadge({ ticket }: { ticket: Ticket }) {
       }`}
     >
       {exceeded ? "SLA Estourado" : "SLA OK"}
+    </span>
+  );
+}
+
+function parseSafeDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getFirstInteractionDate(createdAt: string, updates: TicketUpdate[]): Date | null {
+  const created = parseSafeDate(createdAt);
+  if (!created) return null;
+
+  let firstInteraction: Date | null = null;
+
+  for (const update of updates) {
+    // "desc" is the opening description itself, not an interaction after opening.
+    if (update.id === "desc") continue;
+
+    const updateDate = parseSafeDate(update.date);
+    if (!updateDate) continue;
+    if (updateDate.getTime() < created.getTime()) continue;
+
+    if (!firstInteraction || updateDate.getTime() < firstInteraction.getTime()) {
+      firstInteraction = updateDate;
+    }
+  }
+
+  return firstInteraction;
+}
+
+function FirstInteractionSLABadge({ ticket }: { ticket: Ticket }) {
+  if (!ticket.createdAt) return null;
+
+  const created = parseSafeDate(ticket.createdAt);
+  if (!created) return null;
+
+  const slaHours = getSLAFirstInteractionHours(ticket.priority, "");
+  const firstInteraction = getFirstInteractionDate(ticket.createdAt, ticket.updates);
+  const isClosed = ticket.status === "resolved" || ticket.status === "closed";
+  const fallbackClosedDate =
+    isClosed && ticket.updatedAt ? parseSafeDate(ticket.updatedAt) : null;
+  const endDate = firstInteraction ?? fallbackClosedDate ?? new Date();
+  const elapsedHours = differenceInHours(endDate, created);
+  const exceeded = elapsedHours >= slaHours;
+
+  return (
+    <span
+      className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+        exceeded ? "text-red-600 bg-red-500/10" : "text-green-600 bg-green-500/10"
+      }`}
+      title={`Primeira interacao SLA: ${slaHours}h`}
+    >
+      {exceeded ? "1a Inter. Estourada" : "1a Inter. OK"}
     </span>
   );
 }
@@ -138,6 +196,7 @@ export function TicketCard({
             <StatusBadge status={ticket.status} />
             <PriorityBadge priority={ticket.priority} />
             <SLABadge ticket={ticket} />
+            <FirstInteractionSLABadge ticket={ticket} />
 
             {ticket.hasNewUpdates && (
               <div className="inline-flex items-center gap-1 text-red-500 animate-pulse-slow">
@@ -246,6 +305,4 @@ export function TicketCard({
     </Card>
   );
 }
-
-
 

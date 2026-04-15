@@ -41,10 +41,31 @@ export const SLA_SOLUTION_HOURS: Record<string, number> = {
   urgent: 5,
 };
 
+export const SLA_FIRST_INTERACTION_HOURS: Record<string, number> = {
+  low: 6,
+  medium: 4,
+  high: 2,
+  urgent: 1,
+};
+
+function parseTagList(tags: string): string[] {
+  return tags
+    .toLowerCase()
+    .split(/,\s*|;\s*|\$\$/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export function getSLASolutionHours(priority: string, tags: string): number {
-  const tagList = tags.toLowerCase().split(/,\s*|;\s*|\$\$/).map((s) => s.trim());
+  const tagList = parseTagList(tags);
   if (tagList.includes("associado")) return 3;
   return SLA_SOLUTION_HOURS[priority] ?? 72;
+}
+
+export function getSLAFirstInteractionHours(priority: string, tags: string): number {
+  const tagList = parseTagList(tags);
+  if (tagList.includes("associado")) return 1;
+  return SLA_FIRST_INTERACTION_HOURS[priority] ?? 6;
 }
 
 export const STATUS_BORDER_COLOR: Record<string, string> = {
@@ -54,3 +75,4 @@ export const STATUS_BORDER_COLOR: Record<string, string> = {
   resolved: "border-l-status-resolved",
   closed: "border-l-status-closed",
 };
+
