@@ -1,7 +1,7 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, Search, Loader2, Plus, Check } from "lucide-react";
+import { CalendarIcon, Search, Loader2, Plus, Check, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,6 +40,7 @@ import {
   mapGLPIStatus,
   mapGLPIPriority,
 } from "@/services/glpiService";
+import { buildMonitorReportHtml, openMonitorReportInNewTab } from "@/services/monitorReportService";
 import {
   Tooltip,
   TooltipContent,
@@ -102,6 +103,7 @@ const Monitor = () => {
   const [defaultColumnId, setDefaultColumnId] = useState<number>(0);
   const [configLoaded, setConfigLoaded] = useState(false);
   const [hasConfig, setHasConfig] = useState(false);
+  const [glpiBaseUrl, setGlpiBaseUrl] = useState("");
 
   // Persist filter choices to sessionStorage
   useEffect(() => {
@@ -141,6 +143,7 @@ const Monitor = () => {
   useEffect(() => {
     loadGLPIConfig().then((config) => {
       setHasConfig(!!config);
+      setGlpiBaseUrl(config?.baseUrl || "");
       setConfigLoaded(true);
 
       if (!config) return;
@@ -166,8 +169,8 @@ const Monitor = () => {
     if (dateMode === "relative") {
       if (!relativeDays || relativeDays <= 0) {
         toast({
-          title: "PerÃ­odo invÃ¡lido",
-          description: "Informe uma quantidade de dias vÃ¡lida.",
+          title: "Período inválido",
+          description: "Informe uma quantidade de dias válida.",
           variant: "destructive",
         });
         return;
@@ -177,8 +180,8 @@ const Monitor = () => {
     } else {
       if (!dateFrom || !dateTo) {
         toast({
-          title: "Preencha o perÃ­odo",
-          description: "Selecione as datas de inÃ­cio e fim.",
+          title: "Preencha o período",
+          description: "Selecione as datas de início e fim.",
           variant: "destructive",
         });
         return;
@@ -216,8 +219,8 @@ const Monitor = () => {
       const ticket = await fetchGLPITicket(id);
       if (!ticket) {
         toast({
-          title: "Chamado nÃ£o encontrado",
-          description: `NÃ£o foi possÃ­vel carregar o chamado #${id}.`,
+          title: "Chamado não encontrado",
+          description: `Não foi possível carregar o chamado #${id}.`,
           variant: "destructive",
         });
         return;
@@ -279,13 +282,71 @@ const Monitor = () => {
     return true;
   });
 
+  const getPeriodLabel = (): string => {
+    if (dateMode === "relative") {
+      return `Ultimos ${relativeDays} dias`;
+    }
+    if (!dateFrom || !dateTo) {
+      return "Periodo personalizado";
+    }
+    return `${format(dateFrom, "dd/MM/yyyy", { locale: ptBR })} ate ${format(dateTo, "dd/MM/yyyy", { locale: ptBR })}`;
+  };
+
+  const getGroupLabel = (): string => {
+    if (!selectedGroup || selectedGroup === "all") return "Todos os grupos";
+    const group = groups.find((g) => String(g.id) === selectedGroup);
+    return group?.completename || selectedGroup;
+  };
+
+  const handleGenerateReport = () => {
+    if (!hasSearched) {
+      toast({
+        title: "Consulta nao executada",
+        description: "Execute a busca antes de gerar o relatorio.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (filteredTickets.length === 0) {
+      toast({
+        title: "Sem dados para relatorio",
+        description: "Nenhum chamado encontrado para os filtros atuais.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedGroupLabel = getGroupLabel();
+    const reportRows = filteredTickets.map((ticket) => ({
+      ...ticket,
+      group: selectedGroupLabel,
+    }));
+
+    const reportHtml = buildMonitorReportHtml({
+      tickets: reportRows,
+      groupName: selectedGroupLabel,
+      periodLabel: getPeriodLabel(),
+      glpiBaseUrl,
+      generatedAt: new Date(),
+    });
+
+    const opened = openMonitorReportInNewTab(reportHtml);
+    toast({
+      title: "Relatorio gerado",
+      description: opened
+        ? "Relatorio aberto em uma nova aba."
+        : "Relatorio gerado por download (popup bloqueado).",
+    });
+  };
+
   if (!configLoaded) {
     return (
       <div className="container py-6 mx-auto max-w-[1164px]">
         <Card>
           <CardContent className="py-10 flex items-center justify-center gap-2 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
-            Carregando configuraÃ§Ã£o...
+            Carregando configuração...
           </CardContent>
         </Card>
       </div>
@@ -297,7 +358,7 @@ const Monitor = () => {
       <div className="container py-6 mx-auto max-w-[1164px]">
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
-            Configure a API GLPI em <strong>ConfiguraÃ§Ãµes</strong> para usar o monitoramento.
+            Configure a API GLPI em <strong>Configurações</strong> para usar o monitoramento.
           </CardContent>
         </Card>
       </div>
@@ -312,7 +373,7 @@ const Monitor = () => {
           <div className="flex flex-wrap items-end gap-4">
             {/* Group selector */}
             <div className="flex flex-col gap-1.5 min-w-[220px] flex-1">
-              <Label htmlFor="group-select">Grupo TÃ©cnico</Label>
+              <Label htmlFor="group-select">Grupo Técnico</Label>
               <Select
                 value={selectedGroup}
                 onValueChange={setSelectedGroup}
@@ -336,13 +397,13 @@ const Monitor = () => {
 
             {/* Date mode selector */}
             <div className="flex flex-col gap-1.5">
-              <Label>PerÃ­odo</Label>
+              <Label>Período</Label>
               <Select value={dateMode} onValueChange={(v) => setDateMode(v as "relative" | "custom")}>
                 <SelectTrigger className="w-[160px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="relative">Ãšltimos dias</SelectItem>
+                  <SelectItem value="relative">Últimos dias</SelectItem>
                   <SelectItem value="custom">Personalizado</SelectItem>
                 </SelectContent>
               </Select>
@@ -393,7 +454,7 @@ const Monitor = () => {
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "InÃ­cio"}
+                        {dateFrom ? format(dateFrom, "dd/MM/yyyy") : "Início"}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
@@ -410,7 +471,7 @@ const Monitor = () => {
 
                 {/* Date To */}
                 <div className="flex flex-col gap-1.5">
-                  <Label>AtÃ©</Label>
+                  <Label>Até</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -447,7 +508,7 @@ const Monitor = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="unsolved">NÃ£o solucionados</SelectItem>
+                  <SelectItem value="unsolved">Não solucionados</SelectItem>
                   <SelectItem value="1">Novo</SelectItem>
                   <SelectItem value="2">Em andamento</SelectItem>
                   <SelectItem value="3">Pendente</SelectItem>
@@ -468,17 +529,17 @@ const Monitor = () => {
                   <SelectItem value="all">Todas</SelectItem>
                   <SelectItem value="1">Muito baixa</SelectItem>
                   <SelectItem value="2">Baixa</SelectItem>
-                  <SelectItem value="3">MÃ©dia</SelectItem>
+                  <SelectItem value="3">Média</SelectItem>
                   <SelectItem value="4">Alta</SelectItem>
                   <SelectItem value="5">Muito alta</SelectItem>
-                  <SelectItem value="6">CrÃ­tica</SelectItem>
+                  <SelectItem value="6">Crítica</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {/* Technician filter */}
             <div className="flex flex-col gap-1.5 min-w-[180px]">
-              <Label htmlFor="technician-filter">TÃ©cnico</Label>
+              <Label htmlFor="technician-filter">Técnico</Label>
               <Select value={technicianFilter} onValueChange={setTechnicianFilter}>
                 <SelectTrigger id="technician-filter">
                   <SelectValue placeholder="Todos" />
@@ -521,6 +582,11 @@ const Monitor = () => {
               )}
               Buscar
             </Button>
+
+            <Button variant="outline" onClick={handleGenerateReport}>
+              <FileText className="mr-2 h-4 w-4" />
+              Gerar relatorio
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -556,12 +622,12 @@ const Monitor = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[80px]">ID</TableHead>
-                    <TableHead>TÃ­tulo</TableHead>
-                    <TableHead className="w-[150px]">TÃ©cnico</TableHead>
+                    <TableHead>Título</TableHead>
+                    <TableHead className="w-[150px]">Técnico</TableHead>
                     <TableHead className="w-[130px]">Status</TableHead>
                     <TableHead className="w-[110px]">Prioridade</TableHead>
                     <TableHead className="w-[120px]">Abertura</TableHead>
-                    <TableHead className="w-[120px]">AtualizaÃ§Ã£o</TableHead>
+                    <TableHead className="w-[120px]">Atualização</TableHead>
                     <TableHead className="w-[150px]">Tags</TableHead>
                     <TableHead className="w-[50px]" />
                   </TableRow>
@@ -610,7 +676,7 @@ const Monitor = () => {
                                 <Check className="h-4 w-4 text-muted-foreground" />
                               </div>
                             </TooltipTrigger>
-                            <TooltipContent>JÃ¡ acompanhado</TooltipContent>
+                            <TooltipContent>Já acompanhado</TooltipContent>
                           </Tooltip>
                         ) : (
                           <Tooltip>

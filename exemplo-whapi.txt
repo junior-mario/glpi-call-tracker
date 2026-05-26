@@ -1,0 +1,41 @@
+<?php
+function send_whapi_message($body, $celular) {
+    $url = 'https://gate.whapi.cloud/messages/text';
+    $token = 'IXXChDnGMeiWIODh1Yz2aoBls1JwCJK9'; // Seu token fixo
+    $data = [
+        "to" => $celular,
+        "body" => $body,
+        "channelId" => "SHAZAM-3HDYQ", // Substitua pelo seu channelId real
+        "quoted" => "x7Xcm1-2VT7AM4O8yb4f8-EltSXenm5",
+        "ephemeral" => 0,
+        "edit" => "PWI5hECyNPdRhwGRzv-WBRcj3iA",
+        "typing_time" => 0,
+        "no_link_preview" => false,
+        "mentions" => [
+            "575919130042572@s.whatsapp.net",
+            "8332607@s.whatsapp.net"
+        ],
+        "view_once" => false
+    ];
+ 
+    $ch = curl_init($url);
+ 
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'Authorization: Bearer ' . $token
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+ 
+    $response = curl_exec($ch);
+ 
+    if(curl_errno($ch)){
+        throw new Exception('Erro no cURL: ' . curl_error($ch));
+    }
+ 
+    curl_close($ch);
+ 
+    return $response;
+}
+?>

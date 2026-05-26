@@ -6,6 +6,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY index.js .
+COPY modules ./modules
 
 ENV DB_PATH=/data/db.sqlite
 

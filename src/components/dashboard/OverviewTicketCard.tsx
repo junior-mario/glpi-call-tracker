@@ -1,4 +1,4 @@
-﻿import { format, differenceInDays, differenceInHours, differenceInMinutes } from "date-fns";
+import { format, differenceInDays, differenceInHours, differenceInMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Clock, Hourglass, User, Wrench, ExternalLink } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -106,7 +106,7 @@ export function OverviewTicketCard({ ticket: t, dateLabel, onTicketClick, hideId
         </div>
         <div className="flex items-center gap-1.5">
           <Wrench className="h-3 w-3 shrink-0" />
-          <span className="truncate">{t.assignee || "NÃ£o atribuÃ­do"}</span>
+          <span className="truncate">{t.assignee || "Não atribuído"}</span>
         </div>
         <div className="flex items-center justify-between pt-1">
           <span>

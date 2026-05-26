@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const cors = require("cors");
 const path = require("path");
+const { ticketMonitorRepository, createTicketMonitorService, registerTicketMonitorRoutes } = require("./modules/ticket-monitor");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -156,6 +157,9 @@ try {
   db.exec("ALTER TABLE custom_dashboards ADD COLUMN period_days INTEGER");
 } catch (_) {}
 
+// Ticket monitor module schema
+ticketMonitorRepository.ensureSchema(db);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -179,6 +183,9 @@ function authenticate(req, res, next) {
 function generateToken(user) {
   return jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: "30d" });
 }
+
+const ticketMonitorService = createTicketMonitorService({ db, logger: console });
+registerTicketMonitorRoutes(app, authenticate, ticketMonitorService);
 
 // ─── Auth Routes ────────────────────────────────────────────
 
@@ -975,4 +982,5 @@ app.delete("/api/ai/analyses/:ticketId", authenticate, (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Backend running on port ${PORT}`);
+  ticketMonitorService.startScheduler();
 });

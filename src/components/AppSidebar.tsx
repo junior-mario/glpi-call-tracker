@@ -1,5 +1,12 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, ClipboardList, Settings, Monitor, LogOut } from "lucide-react";
+import {
+  LayoutDashboard,
+  ClipboardList,
+  Settings,
+  Monitor,
+  ShieldAlert,
+  LogOut,
+} from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -19,8 +26,9 @@ import { useAuth } from "@/contexts/AuthContext";
 const menuItems = [
   { title: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
   { title: "Monitoramento", icon: Monitor, to: "/monitor" },
+  { title: "Monitor de Chamados", icon: ShieldAlert, to: "/ticket-monitor" },
   { title: "Chamados", icon: ClipboardList, to: "/" },
-  { title: "Configurações", icon: Settings, to: "/settings" },
+  { title: "Configuracoes", icon: Settings, to: "/settings" },
 ];
 
 export function AppSidebar() {
@@ -35,22 +43,18 @@ export function AppSidebar() {
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
             <ClipboardList className="h-4 w-4 text-primary" />
           </div>
-          {state === "expanded" && (
-            <span className="font-semibold text-sm">GLPI Tracker</span>
-          )}
+          {state === "expanded" && <span className="font-semibold text-sm">GLPI Tracker</span>}
         </div>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navegação</SidebarGroupLabel>
+          <SidebarGroupLabel>Navegacao</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => {
                 const isActive =
-                  item.to === "/"
-                    ? location.pathname === "/"
-                    : location.pathname.startsWith(item.to);
+                  item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to);
 
                 return (
                   <SidebarMenuItem key={item.title}>
@@ -72,9 +76,7 @@ export function AppSidebar() {
         <SidebarMenu>
           {state === "expanded" && user && (
             <SidebarMenuItem>
-              <div className="px-2 py-1 text-xs text-muted-foreground truncate">
-                {user.email}
-              </div>
+              <div className="px-2 py-1 text-xs text-muted-foreground truncate">{user.email}</div>
             </SidebarMenuItem>
           )}
           <SidebarMenuItem>
@@ -85,9 +87,7 @@ export function AppSidebar() {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarTrigger className="w-full justify-start gap-2 h-8">
-              {state === "expanded" && (
-                <span className="text-xs text-muted-foreground">Recolher</span>
-              )}
+              {state === "expanded" && <span className="text-xs text-muted-foreground">Recolher</span>}
             </SidebarTrigger>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -95,3 +95,4 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
+

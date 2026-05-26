@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd group monitoring page with ticket tracking integration\n\nNew /monitor page allows searching GLPI tickets by technical group and\ndate range, with ability to add tickets to the tracker \\(Chamados page\\)\ndirectly from search results.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(if not exist \"C:\\\\Users\\\\mario.franco\\\\Documents\\\\repositorios\\\\glpi-call-tracker\\\\src\\\\contexts\" mkdir \"C:\\\\Users\\\\mario.franco\\\\Documents\\\\repositorios\\\\glpi-call-tracker\\\\src\\\\contexts\")"
+    ]
+  }
+}

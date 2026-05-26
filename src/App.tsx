@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import Monitor from "./pages/Monitor";
+import TicketMonitor from "./pages/TicketMonitor";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import NotFound from "./pages/NotFound";
@@ -31,6 +32,7 @@ const App = () => (
                 <Route index element={<Index />} />
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="monitor" element={<Monitor />} />
+                <Route path="ticket-monitor" element={<TicketMonitor />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
             </Route>

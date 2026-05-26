@@ -1,4 +1,4 @@
-﻿import { TicketUpdate } from "@/types/ticket";
+import { TicketUpdate } from "@/types/ticket";
 import { MessageSquare, RefreshCw, UserCheck, CheckCircle, ClipboardList, ShieldCheck, Paperclip } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -14,12 +14,12 @@ const updateTypeIcons = {
 };
 
 const updateTypeLabels = {
-  comment: "ComentÃ¡rio",
-  status_change: "MudanÃ§a de Status",
-  assignment: "AtribuiÃ§Ã£o",
-  solution: "SoluÃ§Ã£o",
+  comment: "Comentário",
+  status_change: "Mudança de Status",
+  assignment: "Atribuição",
+  solution: "Solução",
   task: "Tarefa",
-  validation: "ValidaÃ§Ã£o",
+  validation: "Validação",
   attachment: "Anexo",
 };
 
@@ -41,7 +41,7 @@ export function Timeline({ updates }: TimelineProps) {
   if (updates.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-4 text-center">
-        Nenhuma atualizaÃ§Ã£o ainda
+        Nenhuma atualização ainda
       </p>
     );
   }
